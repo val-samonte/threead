@@ -2,11 +2,11 @@ name = "threead-backend"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# Durable Objects
-[[durable_objects.bindings]]
-name = "AD_STORAGE"
-class_name = "AdStorage"
-script_name = "threead-backend"
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "threead-db"
+database_id = "" # Will be set after creating database: wrangler d1 create threead-db
 
 # Vectorize (will be created via script)
 [[vectorize]]
@@ -22,4 +22,12 @@ bucket_name = "threead-media"
 # SOLANA_RPC_URL - Solana RPC endpoint
 # RECIPIENT_WALLET - Wallet to receive payments
 # RECIPIENT_TOKEN_ACCOUNT - USDC token account for payments
+
+# Local development
+[dev]
+port = 8787
+ip = "127.0.0.1"
+
+# For services that need remote connections during local dev
+# [dev.remote] can be added if needed for Vectorize, R2, etc.
 

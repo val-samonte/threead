@@ -3,8 +3,8 @@
  */
 
 export interface Env {
-  // Durable Objects
-  AD_STORAGE: DurableObjectNamespace;
+  // D1 Database
+  DB: D1Database;
 
   // Vectorize
   VECTORIZE: Vectorize;

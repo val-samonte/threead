@@ -28,11 +28,29 @@ A simple way to post ads with x402 payments on Solana.
 # Install dependencies
 npm install
 
-# Start backend dev server
+# Start backend dev server (runs on http://localhost:8787)
 npm run dev:backend
 
 # Start frontend dev server (when ready)
 npm run dev:frontend
+```
+
+### Testing
+
+```bash
+# Run unit tests
+cd packages/backend
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Integration tests (requires wrangler dev running)
+# In one terminal: npm run dev:backend
+# In another: npm test
 ```
 
 ## Project Structure
