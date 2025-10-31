@@ -1,0 +1,22 @@
+{
+  "name": "threead",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Three.ad - Simple ad posting platform with x402 payments on Solana",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=packages/backend",
+    "dev:frontend": "npm run dev --workspace=packages/frontend",
+    "build:backend": "npm run build --workspace=packages/backend",
+    "build:frontend": "npm run build --workspace=packages/frontend",
+    "deploy:backend": "npm run deploy --workspace=packages/backend"
+  },
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/threead.git"
+  }
+}
+

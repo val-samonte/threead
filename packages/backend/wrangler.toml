@@ -1,0 +1,25 @@
+name = "threead-backend"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "AD_STORAGE"
+class_name = "AdStorage"
+script_name = "threead-backend"
+
+# Vectorize (will be created via script)
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "ads-vectors"
+
+# R2 for image storage
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "threead-media"
+
+# Environment variables (set via wrangler secret)
+# SOLANA_RPC_URL - Solana RPC endpoint
+# RECIPIENT_WALLET - Wallet to receive payments
+# RECIPIENT_TOKEN_ACCOUNT - USDC token account for payments
+
