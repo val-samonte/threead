@@ -32,11 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Durable Objects implementation (replaced with D1)
 - Backward compatibility shims and re-exports
 
-### TODO
-- Complete Solana verification implementation with @solana/kit
-- Implement MCP protocol handler
-- Add Vectorize integration for semantic search
-- Implement R2 image upload
-- Complete moderation AI integration
-- Frontend implementation
+### TODO (Development Priority)
+1. **MCP protocol handler + tools** (postAd, queryAds, getAdDetails) - FIRST PRIORITY
+   - Implement MCP server to handle agent requests
+   - Create MCP tools for posting and querying ads
+   - Test with AI agents before adding payment verification
+2. **Vectorize integration** for semantic search
+3. **AI moderation integration** (Cloudflare Workers AI)
+4. **R2 image upload** for ad media
+5. **Frontend implementation**
+6. **x402 payment verification** - LAST PRIORITY (deferred until MCP functionality is tested)
+   - Complete Solana verification implementation with @solana/kit
 

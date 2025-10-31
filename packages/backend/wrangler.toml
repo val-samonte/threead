@@ -1,6 +1,6 @@
 name = "threead-backend"
 main = "src/index.ts"
-compatibility_date = "2024-11-01"
+compatibility_date = "2025-11-01"
 
 # D1 Database
 [[d1_databases]]
