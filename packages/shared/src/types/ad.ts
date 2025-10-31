@@ -22,33 +22,6 @@ export interface Ad {
   visible: boolean; // Shadow ban flag
 }
 
-export interface CreateAdRequest {
-  title: string;
-  description?: string;
-  call_to_action?: string;
-  link_url?: string;
-  latitude?: number;
-  longitude?: number;
-  days: number; // Number of days to run ad
-  min_age?: number;
-  max_age?: number;
-  location?: string;
-  interests?: string[]; // Array of interests (≤5)
-  media?: File | Blob; // Optional image
-}
-
-export interface AdQueryParams {
-  query?: string; // Semantic search query
-  latitude?: number;
-  longitude?: number;
-  radius?: number; // In kilometers
-  min_age?: number;
-  max_age?: number;
-  interests?: string[];
-  limit?: number;
-  offset?: number;
-}
-
 export interface AdSearchResult {
   ads: Ad[];
   total: number;

@@ -1,7 +1,7 @@
 /**
  * Integration tests for health endpoint
  * 
- * Note: For full integration testing with Durable Objects, Vectorize, etc.,
+ * Note: For full integration testing with D1, Vectorize, etc.,
  * use `wrangler dev` and test against the local server
  */
 

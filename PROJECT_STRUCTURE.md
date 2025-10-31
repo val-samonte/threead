@@ -55,8 +55,6 @@ threead/
 │       │   │       ├── postAd.ts  # MCP tool: post ad (calls services)
 │       │   │       ├── queryAds.ts # MCP tool: semantic query (calls services)
 │       │   │       └── getAdDetails.ts # MCP tool: get ad details
-│       │   ├── durable-objects/
-│       │   │   └── AdStorage.ts   # Durable Object for SQLite
 │       │   ├── services/
 │       │   │   ├── moderation.ts  # AI moderation scoring
 │       │   │   ├── vectorize.ts   # Vectorize operations
@@ -100,8 +98,8 @@ threead/
   - REST API endpoints (`/api/*`) for frontend/web clients
   - MCP protocol endpoints (`/mcp/v1/*`) for AI agents
 - **Shared Services Layer**: Both REST and MCP routes use the same services:
-  - `services/` - Business logic (moderation, vectorize, solana)
-  - `durable-objects/AdStorage.ts` - SQLite database via Durable Objects
+  - `services/` - Business logic (moderation, vectorize, solana, db)
+  - D1 - SQLite database for ad storage
   - Vectorize - Semantic search index
   - R2 - Image storage
 - **Benefits**: Single deployment, no network overhead, shared logic, easier maintenance
@@ -130,12 +128,12 @@ threead/
 
 **Frontend → REST API:**
 ```
-Frontend → /api/ads (POST) → routes/ads.ts → services/* → Durable Objects/Vectorize
+Frontend → /api/ads (POST) → routes/ads.ts → services/* → D1/Vectorize
 ```
 
 **MCP Agent → MCP Protocol:**
 ```
-MCP Client → /mcp/v1/tools/call → mcp/server.ts → mcp/tools/postAd.ts → services/* → Durable Objects/Vectorize
+MCP Client → /mcp/v1/tools/call → mcp/server.ts → mcp/tools/postAd.ts → services/* → D1/Vectorize
 ```
 
 Both paths use the **same services layer**, ensuring consistency and eliminating duplication.
@@ -143,7 +141,7 @@ Both paths use the **same services layer**, ensuring consistency and eliminating
 ## Next Steps
 
 1. Initialize monorepo structure
-2. Set up Cloudflare Workers project with Durable Objects
+2. Set up Cloudflare Workers project with D1 database
 3. Create shared types package
 4. Set up frontend with Vite + React
 5. Implement backend services layer (moderation, vectorize, solana)

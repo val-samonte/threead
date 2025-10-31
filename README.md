@@ -9,7 +9,7 @@ A simple way to post ads with x402 payments on Solana.
 ## Architecture
 
 - **Frontend**: React + Vite + Tailwind CSS 4 + Jotai
-- **Backend**: Cloudflare Workers + Durable Objects + Vectorize + R2
+- **Backend**: Cloudflare Workers + D1 + Vectorize + R2
 - **Payments**: x402 protocol with direct Solana verification
 - **MCP**: Model Context Protocol integration for AI agents
 

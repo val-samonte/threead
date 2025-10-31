@@ -17,8 +17,6 @@ curl http://localhost:8787/health
 
 ### Integration Tests
 
-**Note:** Durable Objects work **offline** with `wrangler dev` using the local `workerd` runtime.
-
 1. Start the dev server:
 ```bash
 npm run dev:backend
