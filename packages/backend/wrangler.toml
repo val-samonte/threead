@@ -8,10 +8,29 @@ binding = "DB"
 database_name = "threead-db"
 database_id = "" # Will be set after creating database: wrangler d1 create threead-db
 
-# Vectorize (will be created via script)
+# Vectorize for semantic search
+# Index created: npx wrangler vectorize create ads-vectors --dimensions=384 --metric=cosine
+# Vectorize requires remote connections (no local simulation)
+# Reference: https://developers.cloudflare.com/workers/development-testing/bindings-per-env/
+#
+# IMPORTANT: Metadata filtering requires metadata indexes to be created first!
+# Vectors upserted before metadata index creation won't be filterable.
+# Create metadata indexes using wrangler CLI (free, included in all plans):
+#   npx wrangler vectorize create-metadata-index ads-vectors --propertyName visible --type number
+#   npx wrangler vectorize create-metadata-index ads-vectors --propertyName expiry --type string
+#   npx wrangler vectorize create-metadata-index ads-vectors --propertyName moderation_score --type number
+# After creating indexes, re-upsert vectors or wait for new ones to be indexed.
+# Reference: https://developers.cloudflare.com/vectorize/reference/metadata-filtering/
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "ads-vectors"
+remote = true
+
+# Workers AI (for embeddings) - use remote binding in local dev
+# Uses @cf/baai/bge-small-en-v1.5 model (384 dimensions)
+[ai]
+binding = "AI"
+remote = true
 
 # R2 for image storage
 [[r2_buckets]]
@@ -29,5 +48,5 @@ port = 8787
 ip = "127.0.0.1"
 
 # For services that need remote connections during local dev
-# [dev.remote] can be added if needed for Vectorize, R2, etc.
+# AI and Vectorize are configured to use remote bindings individually
 

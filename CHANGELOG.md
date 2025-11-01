@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - REST API and MCP routes now allow ad creation without x402 payment during MCP testing
   - Uses placeholder `dev-bypass-{uuid}` for payment_tx field
   - Payment verification can be re-enabled after MCP functionality is tested
+- **Vectorize integration for semantic search**
+  - Created `services/vectorize.ts` service for embeddings and semantic search
+  - Integrated Cloudflare Workers AI (`@cf/meta/all-minilm-l6-v2`) for text embeddings (384 dimensions)
+  - Automatic indexing of ads in Vectorize when created (non-blocking)
+  - Semantic search via Vectorize when query string is provided in `queryAds` tool and REST API
+  - Combines Vectorize semantic search with geo, age, and interest filters
+  - Fallback to D1 keyword search when no query string provided
+  - Setup instructions in `wrangler.toml` for creating Vectorize index
 
 ### Changed
 - Migrated from Durable Objects to D1 database for better SQL support and geo queries
@@ -51,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed redundant `postAdTool` wrapper and inlined direct call to `createAdService` in MCP server
   - Fixed count query bug in `db.ts` (was using `SELECT *` instead of `SELECT COUNT(*) as count`)
   - Cleaned up redundant try-catch blocks and unused imports
+  - **Vectorize integration improvements:**
+    - Updated AI embedding model from `@cf/meta/all-minilm-l6-v2` to `@cf/baai/bge-small-en-v1.5` (384 dimensions)
+    - Enabled Vectorize metadata filtering for `visible` field (requires metadata indexes created first)
+    - Added retry logic in Vectorize tests to handle eventual consistency (vectors may not be immediately searchable after upsert)
+    - Updated `wrangler.toml` with remote bindings for AI and Vectorize (individual service configuration, not full `--remote` mode)
 
 ### Removed
 - Durable Objects implementation (replaced with D1)
@@ -64,10 +77,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - ✅ Implemented MCP server with JSON-RPC 2.0 protocol
    - ✅ Created MCP tools for posting and querying ads
    - ⏳ Testing with AI agents (ready for testing)
-2. **Vectorize integration** for semantic search
-   - Integrate Cloudflare Vectorize for semantic query matching
-   - Index ad content (title, description, location, interests) in Vectorize
-   - Enhance queryAds tool with semantic search capabilities
+2. ✅ **Vectorize integration** for semantic search - COMPLETED
+   - ✅ Integrated Cloudflare Vectorize for semantic query matching
+   - ✅ Using `@cf/baai/bge-small-en-v1.5` model for embeddings (384 dimensions)
+   - ✅ Vectorize metadata filtering enabled for efficient querying (visible field filtered at index level)
+   - ✅ Index ad content (title, description, location, interests) in Vectorize on creation
+   - ✅ Enhanced queryAds tool and REST API with semantic search capabilities
+   - ✅ Vectorize metadata indexes created for filtering (visible, expiry, moderation_score)
+   - ✅ Implemented Vectorize-level metadata filtering for better performance
+   - ✅ Vectorize index created: `npx wrangler vectorize create ads-vectors --dimensions=384 --metric=cosine`
+   - ✅ Metadata indexes created via wrangler CLI (free, included in all plans)
 3. **AI moderation integration** (Cloudflare Workers AI)
    - Replace basic keyword checking with Cloudflare AI Workers
    - Improve moderation scoring accuracy
