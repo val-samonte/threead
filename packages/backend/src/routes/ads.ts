@@ -104,8 +104,11 @@ async function getAds(request: Request, env: Env, path: string): Promise<Respons
     // If a query string is provided, use Vectorize semantic search
     if (params.query) {
       // Perform semantic search with Vectorize
+      // Vectorize limits topK to 50 when returnMetadata=true (which we use)
+      // Cap at 50 to respect this limit - we fetch more than needed for filtering
+      const topK = Math.min(params.limit ? Math.max(params.limit * 3, 50) : 100, 50);
       const vectorResults = await semanticSearch(env, params.query, {
-        topK: params.limit ? params.limit * 2 : 100, // Fetch more for filtering
+        topK,
         filter: {
           visible: true,
           min_age: params.min_age,

@@ -82,8 +82,9 @@ describe('Moderation Service Tests', () => {
       expect(createData.ad!.moderation_score).toBeDefined();
       expect(createData.ad!.visible).toBeDefined();
 
-      // AI should score clean, professional content highly
-      expect(createData.ad!.moderation_score!).toBeGreaterThanOrEqual(7);
+      // AI should score clean, professional commercial content as 10
+      // Typical business ads (pizza, shops, services) with no malicious intent should score 10
+      expect(createData.ad!.moderation_score!).toBeGreaterThanOrEqual(9);
       expect(createData.ad!.moderation_score!).toBeLessThanOrEqual(10);
       expect(createData.ad!.visible).toBe(true);
     });

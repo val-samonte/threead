@@ -109,7 +109,8 @@ export async function indexAd(env: Env, ad: Ad): Promise<void> {
     // Upsert into Vectorize
     // Using ad_id as the id for easy updates
     // Type assertion needed as metadata may contain null which types don't officially support
-    // Vectorize upsert is synchronous - vectors are immediately queryable after upsert completes
+    // Vectorize upsert completes synchronously, but getByIds may have eventual consistency
+    // We verify indexing via successful upsert completion (no error thrown)
     await env.VECTORIZE.upsert([
       {
         id: ad.ad_id,
@@ -118,9 +119,9 @@ export async function indexAd(env: Env, ad: Ad): Promise<void> {
       },
     ]);
     
-    // Note: getByIds may have a brief propagation delay after upsert
-    // We don't fail if it's not immediately available - queries will verify indexing works
-    // Log success for debugging
+    // Log success - upsert completion means the vector is indexed
+    // Note: getByIds may have eventual consistency in remote Vectorize, so we don't verify via getByIds
+    // Indexing is verified by successful upsert (no exception thrown)
     console.log(`Successfully indexed ad ${ad.ad_id} in Vectorize. Embedding dims: ${embedding.length}`);
   } catch (error) {
     // Log full error details for debugging
@@ -174,7 +175,9 @@ export async function semanticSearch(
     }
 
     // Execute similarity search with Vectorize metadata filters
-    const topK = options.topK || 50;
+    // Vectorize limits topK to 50 when returnMetadata=true
+    // Cap topK at 50 to avoid VECTOR_QUERY_ERROR
+    const topK = Math.min(options.topK || 50, 50);
     
     // Query with Vectorize filters for better performance (filters at the index level)
     const queryResult = await env.VECTORIZE.query(queryEmbedding, {
@@ -185,11 +188,40 @@ export async function semanticSearch(
     });
     
     // Log query results for debugging
-    console.log(`Vectorize query returned ${queryResult.matches?.length || 0} matches${Object.keys(vectorizeFilter).length > 0 ? ` (filter: ${JSON.stringify(vectorizeFilter)})` : ''}`);
+    const matchCount = queryResult.matches?.length || 0;
+    console.log(`Vectorize query returned ${matchCount} matches${Object.keys(vectorizeFilter).length > 0 ? ` (filter: ${JSON.stringify(vectorizeFilter)})` : ''}`);
+    
+    // Debug: Log first few match IDs if debugging is needed
+    if (matchCount > 0 && queryResult.matches) {
+      const firstFewIds = queryResult.matches.slice(0, 5).map(m => m.id).join(', ');
+      console.log(`First 5 Vectorize match IDs: ${firstFewIds}${matchCount > 5 ? '...' : ''}`);
+    }
 
     // Filter results by additional criteria (age, geo, interests)
     // Note: visible filtering is now handled by Vectorize metadata filters (more efficient)
     let results = queryResult.matches || [];
+    
+    // Double-check visible flag from Vectorize metadata in case metadata filtering didn't work
+    // This can happen if metadata indexes weren't created or ads were indexed before index creation
+    if (options.filter?.visible !== undefined) {
+      const beforeFilterCount = results.length;
+      results = results.filter(match => {
+        const visible = match.metadata?.visible;
+        // Vectorize stores visible as 1 or 0, but could also be boolean in some cases
+        const isVisible = visible === 1 || visible === true;
+        return isVisible === options.filter!.visible;
+      });
+      if (results.length !== beforeFilterCount) {
+        console.warn(`Vectorize metadata filter didn't fully apply - filtered ${beforeFilterCount} to ${results.length} results by visible flag`);
+        // Debug: Log IDs that were filtered out
+        const filteredOut = queryResult.matches?.filter(m => {
+          const visible = m.metadata?.visible;
+          const isVisible = visible === 1 || visible === true;
+          return isVisible !== options.filter!.visible;
+        }).map(m => m.id) || [];
+        console.warn(`Filtered out ${filteredOut.length} ads with visible flag mismatch: ${filteredOut.slice(0, 5).join(', ')}${filteredOut.length > 5 ? '...' : ''}`);
+      }
+    }
 
     // Apply age filtering
     if (options.filter?.min_age !== undefined) {

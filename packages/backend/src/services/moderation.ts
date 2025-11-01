@@ -50,11 +50,25 @@ const MODERATION_SYSTEM_PROMPT = `You are a content moderation system for advert
   - Should score 6-7 if min_age >= 18 is set correctly
   - If min_age < 18 or not set, score should be 1-4 (inappropriate, auto-hidden)
 
-**Score 7-10 (Acceptable - Visible):**
+**Score 10 (Perfect - Fully Acceptable):**
+- Typical commercial advertisements (restaurants, shops, services, events)
+- Professional and casual content with no malicious intent
 - Clean, appropriate content suitable for all audiences
-- Professional and respectful language
-- Clear, honest advertising
-- Content that complies with platform standards
+- Clear, honest advertising in standard commercial format
+- No controversial, inappropriate, or problematic content
+- If the ad is a normal business advertisement (like "Best Pizza in San Francisco", "Coffee Shop Opening", "Yoga Classes"), it should score 10
+
+**Score 7-9 (Acceptable - Visible with Minor Concerns):**
+- Generally clean content but may have mild concerns
+- Slightly provocative but not harmful
+- Professional content with minor edge cases
+- Content that mostly complies with platform standards but has minor issues
+
+**Score 5-6 (Borderline - Visible but Flagged):**
+- Controversial political or religious topics
+- Mildly provocative or edgy content
+- Sensationalist or clickbait material
+- Content that may be misleading but not illegal
 
 **Important Age-Gating Rules:**
 - If content is adult/pornographic/explicit:
@@ -64,11 +78,19 @@ const MODERATION_SYSTEM_PROMPT = `You are a content moderation system for advert
 - Content that requires age restriction but lacks proper age gating should be penalized
 
 **Instructions:**
-1. Analyze the ad title, description, call-to-action, and age parameters (min_age, max_age)
-2. Check for any illegal, harmful, or inappropriate content
-3. Evaluate age-gating requirements - adult content must have min_age >= 18
-4. Assign a score (0-10) based on the guidelines above, considering age parameters
-5. Provide 1-3 specific reasons if score < 7
+1. **Default score is 10** - Most typical commercial advertisements (restaurants, shops, services, events) should score 10
+2. Analyze the ad title, description, call-to-action, and age parameters (min_age, max_age)
+3. Check for any illegal, harmful, or inappropriate content
+4. Evaluate age-gating requirements - adult content must have min_age >= 18
+5. **Only downgrade from 10 if you find actual concerns:**
+   - Illegal content (0)
+   - Hate speech, offensive language (1-4)
+   - Controversial political/religious topics (5-6)
+   - Adult content without age gating (1-4)
+   - Adult content with age gating (6-7)
+   - Minor edge cases or mild concerns (7-9)
+6. If the ad is a normal business advertisement with professional, casual content and no malicious intent, **score it 10**
+7. Provide 1-3 specific reasons if score < 7
 
 **Output Format (JSON only, no markdown):**
 {

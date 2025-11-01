@@ -75,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused MCP tools/index.ts file (functionality moved to direct SDK usage)
 - Redundant `postAdTool` wrapper file (functionality inlined in MCP server.ts)
 - Unused imports (`verifyPayment`, `calculateAdPricing`) from REST API routes
+- Unused Vectorize indexing check functions (`isAdIndexed`, `checkIndexed`) and `/api/ads/:adId/indexed` endpoint
+- Retry logic from Vectorize tests (replaced with upsert success verification)
 
 ### TODO (Development Priority)
 1. ✅ **MCP protocol handler + tools** (postAd, queryAds, getAdDetails) - COMPLETED
@@ -89,8 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - ✅ Enhanced queryAds tool and REST API with semantic search capabilities
    - ✅ Vectorize metadata indexes created for filtering (visible, expiry, moderation_score)
    - ✅ Implemented Vectorize-level metadata filtering for better performance
-   - ✅ Vectorize index created: `npx wrangler vectorize create ads-vectors --dimensions=384 --metric=cosine`
-   - ✅ Metadata indexes created via wrangler CLI (free, included in all plans)
+    - ✅ Vectorize index created: `npx wrangler vectorize create ads-vectors --dimensions=384 --metric=cosine`
+    - ✅ Metadata indexes created via wrangler CLI (free, included in all plans)
+    - ✅ Fixed Vectorize topK limit: capped at 50 when returnMetadata=true to avoid VECTOR_QUERY_ERROR
+    - ✅ Removed retry logic from tests: verify indexing via successful upsert completion (getByIds has eventual consistency)
 3. ✅ **AI moderation integration** (Cloudflare Workers AI) - COMPLETED
    - ✅ Implemented comprehensive AI-powered content moderation using Cloudflare Workers AI (`@cf/meta/llama-3.2-3b-instruct`)
    - ✅ Created detailed moderation prompt based on Twitter/X policies with clear scoring guidelines
@@ -99,8 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - ✅ Pure AI moderation only: removed keyword fallback - requires AI to be available or moderation fails
    - ✅ Moderation analyzes title, description, call-to-action, location, and interests
    - ✅ Provides specific reasons for low scores (1-3 reasons per violation)
-   - ✅ Illegal content detection: child abuse, illegal drugs, violence, money laundering, human trafficking, spam
-   - ✅ Inappropriate content detection: hate speech, offensive language, misinformation, dangerous activities
+    - ✅ Illegal content detection: child abuse, illegal drugs, violence, money laundering, human trafficking, spam
+    - ✅ Inappropriate content detection: hate speech, offensive language, misinformation, dangerous activities
+    - ✅ Updated moderation prompt: typical commercial ads (restaurants, shops, services) default to score 10
+    - ✅ Moderation now explicitly instructs AI to score professional/casual business ads as 10 unless concerns exist
 4. **R2 image upload** for ad media
    - Implement media upload endpoint
    - Store images in R2 bucket
