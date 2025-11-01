@@ -5,6 +5,7 @@
 
 import type { Env } from './types/env';
 import { handleAdsRoute } from './routes/ads';
+import { handleMCPRequest } from './mcp/server';
 
 export type { Env };
 
@@ -26,11 +27,12 @@ export default {
 
     // Route to MCP protocol handler
     if (url.pathname.startsWith('/mcp/')) {
-      // TODO: Import and use MCP handler
-      return new Response('MCP endpoint - coming soon', { 
-        status: 200,
-        headers: corsHeaders 
+      const response = await handleMCPRequest(request, env);
+      // Add CORS headers
+      Object.entries(corsHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value);
       });
+      return response;
     }
 
     // Route to REST API
