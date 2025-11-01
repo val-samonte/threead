@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed keyword-based fallback moderation
   - Moderation now requires Cloudflare Workers AI binding and fails if AI is unavailable
   - Ensures consistent AI-powered content analysis for all ads
+- **Moderation scoring improvements**
+  - Updated moderation prompt: typical commercial ads (restaurants, shops, services) now default to score 10
+  - Only downgrade from 10 if actual concerns exist (illegal content, hate speech, adult content, etc.)
+  - Normal business advertisements with professional/casual content score 10 by default
 - Migrated from Durable Objects to D1 database for better SQL support and geo queries
 - REST API ad creation now uses moderation service for scoring and visibility determination
 - Payment verification temporarily disabled in both REST API and MCP to facilitate testing
