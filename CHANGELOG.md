@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Setup instructions in `wrangler.toml` for creating Vectorize index
 
 ### Changed
+- **Moderation service refactored to pure AI-only**
+  - Removed keyword-based fallback moderation
+  - Moderation now requires Cloudflare Workers AI binding and fails if AI is unavailable
+  - Ensures consistent AI-powered content analysis for all ads
 - Migrated from Durable Objects to D1 database for better SQL support and geo queries
 - REST API ad creation now uses moderation service for scoring and visibility determination
 - Payment verification temporarily disabled in both REST API and MCP to facilitate testing
@@ -87,9 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - ✅ Implemented Vectorize-level metadata filtering for better performance
    - ✅ Vectorize index created: `npx wrangler vectorize create ads-vectors --dimensions=384 --metric=cosine`
    - ✅ Metadata indexes created via wrangler CLI (free, included in all plans)
-3. **AI moderation integration** (Cloudflare Workers AI)
-   - Replace basic keyword checking with Cloudflare AI Workers
-   - Improve moderation scoring accuracy
+3. ✅ **AI moderation integration** (Cloudflare Workers AI) - COMPLETED
+   - ✅ Implemented comprehensive AI-powered content moderation using Cloudflare Workers AI (`@cf/meta/llama-3.2-3b-instruct`)
+   - ✅ Created detailed moderation prompt based on Twitter/X policies with clear scoring guidelines
+   - ✅ Scoring system: 0 (illegal/malicious), 1-4 (inappropriate), 5-10 (acceptable)
+   - ✅ Automatic shadow banning: ads with score < 5 are automatically set to `visible = false`
+   - ✅ Pure AI moderation only: removed keyword fallback - requires AI to be available or moderation fails
+   - ✅ Moderation analyzes title, description, call-to-action, location, and interests
+   - ✅ Provides specific reasons for low scores (1-3 reasons per violation)
+   - ✅ Illegal content detection: child abuse, illegal drugs, violence, money laundering, human trafficking, spam
+   - ✅ Inappropriate content detection: hate speech, offensive language, misinformation, dangerous activities
 4. **R2 image upload** for ad media
    - Implement media upload endpoint
    - Store images in R2 bucket

@@ -40,8 +40,8 @@ export async function createAdService(
       };
     }
 
-    // Run moderation
-    const moderation = await moderateAd(adRequest);
+    // Run moderation with AI (if available)
+    const moderation = await moderateAd(adRequest, env);
 
     // Create ad record
     const now = new Date();
