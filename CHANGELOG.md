@@ -66,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Vectorize integration improvements:**
     - Updated AI embedding model from `@cf/meta/all-minilm-l6-v2` to `@cf/baai/bge-small-en-v1.5` (384 dimensions)
     - Enabled Vectorize metadata filtering for `visible` field (requires metadata indexes created first)
-    - Added retry logic in Vectorize tests to handle eventual consistency (vectors may not be immediately searchable after upsert)
+    - Fixed Vectorize topK limit: capped at 50 when returnMetadata=true to avoid VECTOR_QUERY_ERROR
+    - Removed retry logic from tests: verify indexing via successful upsert completion (getByIds has eventual consistency with remote Vectorize)
     - Updated `wrangler.toml` with remote bindings for AI and Vectorize (individual service configuration, not full `--remote` mode)
 
 ### Removed
