@@ -15,9 +15,9 @@
 
 import type { Env } from '../types/env';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { postAdTool } from './tools/postAd';
 import { queryAdsTool } from './tools/queryAds';
 import { getAdDetailsTool } from './tools/getAdDetails';
+import { createAdService } from '../services/adCreation';
 import type { CreateAdRequest, AdQueryParams } from '@threead/shared';
 import { z } from 'zod';
 
@@ -42,8 +42,8 @@ function getMCPServer(env: Env): McpServer {
     // 
     // NOTE: The `as any` assertion below is ONLY for TypeScript type compatibility in monorepos.
     // ALL VALIDATIONS REMAIN FULLY FUNCTIONAL AT RUNTIME:
-    // 1. MCP SDK validates using these zod schemas
-    // 2. postAdTool() also calls validateAdRequest() with full shared schemas
+    // 1. MCP SDK validates using these zod schemas before calling the handler
+    // 2. postAdTool() receives already-validated args and trusts the types
     // No validation rules are compromised - this is purely a type system workaround.
     mcpServer.tool(
       'postAd',
@@ -62,11 +62,12 @@ function getMCPServer(env: Env): McpServer {
         interests: z.array(z.string()).max(5).optional(),
       } as any, // Type assertion for monorepo zod version compatibility - validations still work
       {},
-      // Callback signature: SDK will pass validated args based on zod schema above
+      // Callback signature: SDK validates args with zod schema above, then passes to handler
       // We use 'any' for args parameter because SDK type inference is broken by 'as any' on schema
-      // VALIDATION IS PRESERVED: postAdTool() calls validateAdRequest() which uses full CreateAdRequestSchema
+      // VALIDATION IS PRESERVED: MCP SDK validates with zod before handler is called
       (async (args: any) => {
-        const result = await postAdTool(args as CreateAdRequest, env);
+        // Directly call createAdService since it already handles all logic and error formatting
+        const result = await createAdService(args as CreateAdRequest, env);
         return {
           content: [
             {
@@ -79,7 +80,7 @@ function getMCPServer(env: Env): McpServer {
     );
 
     // Register queryAds tool
-    // NOTE: `as any` below is ONLY for TypeScript types - validations work at runtime via SDK + validateAdQueryParams()
+    // NOTE: `as any` below is ONLY for TypeScript types - validations work at runtime via SDK
     mcpServer.tool(
       'queryAds',
       'Search and query advertisements using semantic search, location, age, and interest filters.',
@@ -95,9 +96,9 @@ function getMCPServer(env: Env): McpServer {
         offset: z.number().int().min(0).optional(),
       } as any, // Type assertion for monorepo zod version compatibility - validations still work
       {},
-      // Callback signature: SDK will pass validated args based on zod schema above
+      // Callback signature: SDK validates args with zod schema above, then passes to handler
       // We use 'any' for args parameter because SDK type inference is broken by 'as any' on schema
-      // VALIDATION IS PRESERVED: queryAdsTool() calls validateAdQueryParams() which uses full AdQueryParamsSchema
+      // VALIDATION IS PRESERVED: MCP SDK validates with zod before handler is called
       (async (args: any) => {
         const result = await queryAdsTool(args as AdQueryParams, env);
         return {
@@ -120,9 +121,9 @@ function getMCPServer(env: Env): McpServer {
         ad_id: z.string().uuid(),
       } as any, // Type assertion for monorepo zod version compatibility - validations still work
       {},
-      // Callback signature: SDK will pass validated args based on zod schema above
+      // Callback signature: SDK validates args with zod schema above, then passes to handler
       // We use 'any' for args parameter because SDK type inference is broken by 'as any' on schema
-      // VALIDATION IS PRESERVED: SDK validates UUID format via zod schema, getAdDetailsTool validates ad_id exists
+      // VALIDATION IS PRESERVED: MCP SDK validates UUID format with zod before handler is called
       (async (args: any) => {
         const result = await getAdDetailsTool(args as { ad_id: string }, env);
         return {

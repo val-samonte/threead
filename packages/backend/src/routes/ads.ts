@@ -5,9 +5,7 @@
 import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad, AdQueryParams, AdSearchResult } from '@threead/shared';
 import { validateAdRequest } from '@threead/shared';
-import { calculateAdPricing } from '../services/pricing';
-import { verifyPayment } from '../services/solana';
-import { moderateAd } from '../services/moderation';
+import { createAdService } from '../services/adCreation';
 import * as dbService from '../services/db';
 
 export async function handleAdsRoute(
@@ -45,105 +43,26 @@ async function createAd(request: Request, env: Env): Promise<Response> {
 
     // TODO: Re-enable payment verification after MCP functionality is tested
     // During MCP development, skip payment verification to allow testing
-    // Check x402 payment header
-    const paymentHeader = request.headers.get('X-Payment');
-    let payment_tx: string;
-    
-    if (!paymentHeader) {
-      // During development, allow ads without payment
-      // Use placeholder payment_tx
-      const adId = crypto.randomUUID();
-      payment_tx = `dev-bypass-${adId}`;
-    } else {
-      // If payment header is provided, attempt verification (but don't fail if it doesn't work)
-      try {
-        const paymentProof = JSON.parse(
-          Buffer.from(paymentHeader, 'base64').toString()
-        ) as { payload: { serializedTransaction?: string }; network?: string };
+    // Payment verification will be implemented when x402 integration is ready
+    // For now, createAdService will use a dev-bypass payment_tx
 
-        // Extract signature from transaction (simplified - actual implementation needs proper parsing)
-        // TODO: Parse serialized transaction to get signature
-        const signature = 'TODO'; // Placeholder
+    // Create ad using shared service
+    const result = await createAdService(body, env);
 
-        const pricing = calculateAdPricing(body.days, !!body.media);
-        const verification = await verifyPayment(
-          signature,
-          pricing.priceSmallestUnits,
-          env.RECIPIENT_TOKEN_ACCOUNT,
-          env
-        );
-
-        if (verification.valid) {
-          payment_tx = verification.signature;
-        } else {
-          // Fall back to dev bypass if verification fails
-          const adId = crypto.randomUUID();
-          payment_tx = `dev-bypass-${adId}`;
-        }
-      } catch {
-        // If payment parsing fails, use dev bypass
-        const adId = crypto.randomUUID();
-        payment_tx = `dev-bypass-${adId}`;
-      }
-    }
-
-    // TODO: Upload media to R2 if provided
-    let mediaKey: string | undefined;
-    if (body.media) {
-      // TODO: Implement R2 upload
-      mediaKey = 'TODO';
-    }
-
-    // Run moderation
-    const moderation = await moderateAd(body);
-
-    // Create ad record
-    const adId = crypto.randomUUID();
-    const now = new Date();
-    const expiry = new Date(now);
-    expiry.setDate(expiry.getDate() + body.days);
-
-    const ad: Ad = {
-      ad_id: adId,
-      title: body.title,
-      description: body.description,
-      call_to_action: body.call_to_action,
-      link_url: body.link_url,
-      latitude: body.latitude,
-      longitude: body.longitude,
-      expiry: expiry.toISOString(),
-      min_age: body.min_age,
-      max_age: body.max_age,
-      location: body.location,
-      interests: body.interests?.join(','),
-      payment_tx,
-      media_key: mediaKey,
-      created_at: now.toISOString(),
-      moderation_score: moderation.score,
-      visible: moderation.visible,
-    };
-
-    // Initialize database if needed (idempotent)
-    await dbService.initializeDatabase(env.DB);
-
-    // Store in D1 database
-    try {
-      await dbService.createAd(env.DB, ad);
-    } catch (error) {
+    if (!result.success) {
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to create ad',
-          details: error instanceof Error ? error.message : 'Unknown error'
+          error: result.error || 'Failed to create ad'
         }),
         { 
-          status: 500,
+          status: 400,
           headers: { 'Content-Type': 'application/json' }
         }
       );
     }
 
     return new Response(
-      JSON.stringify({ success: true, ad }),
+      JSON.stringify({ success: true, ad: result.ad }),
       { 
         status: 201,
         headers: { 'Content-Type': 'application/json' }

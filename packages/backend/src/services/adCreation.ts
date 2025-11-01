@@ -1,67 +1,51 @@
 /**
- * MCP Tool: postAd
- * Creates a new advertisement
- * 
- * Note: During MCP development, payment verification is skipped.
- * Payment_tx field is set to a dev placeholder.
+ * Shared ad creation service
+ * Consolidates ad creation logic used by both REST API and MCP tools
  */
 
-import type { Env } from '../../types/env';
+import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad } from '@threead/shared';
-import { validateAdRequest } from '@threead/shared';
-// import { calculateAdPricing } from '../../services/pricing'; // TODO: Uncomment when payment verification is re-enabled
-import { moderateAd } from '../../services/moderation';
-import * as dbService from '../../services/db';
+import { moderateAd } from './moderation';
+import * as dbService from './db';
 
-/**
- * Post a new ad via MCP
- * Payment verification is skipped during development
- */
-export async function postAdTool(
-  args: unknown,
-  env: Env
-): Promise<{
+export interface CreateAdResult {
   success: boolean;
   ad?: Ad;
   error?: string;
-}> {
+}
+
+/**
+ * Create a new ad (shared implementation for REST API and MCP)
+ * During development, payment verification is bypassed
+ */
+export async function createAdService(
+  adRequest: CreateAdRequest,
+  env: Env,
+  paymentTx?: string
+): Promise<CreateAdResult> {
   try {
-    // Validate input
-    const validation = validateAdRequest(args);
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: `Validation failed: ${validation.errors.join(', ')}`,
-      };
-    }
-
-    const adRequest = args as CreateAdRequest;
-
-    // TODO: Calculate pricing when payment verification is re-enabled
-    // const pricing = calculateAdPricing(adRequest.days, !!adRequest.media);
-
-    // Run moderation
-    const moderation = await moderateAd(adRequest);
+    // Generate ad ID and payment TX if not provided
+    const adId = crypto.randomUUID();
+    const finalPaymentTx = paymentTx || `dev-bypass-${adId}`;
 
     // TODO: Upload media to R2 if provided
     let mediaKey: string | undefined;
     if (adRequest.media) {
       // TODO: Implement R2 upload
-      // For now, skip media upload
+      // For now, media upload is not supported
       return {
         success: false,
         error: 'Media upload not yet implemented',
       };
     }
 
+    // Run moderation
+    const moderation = await moderateAd(adRequest);
+
     // Create ad record
-    const adId = crypto.randomUUID();
     const now = new Date();
     const expiry = new Date(now);
     expiry.setDate(expiry.getDate() + adRequest.days);
-
-    // During MCP development, use placeholder payment_tx
-    const payment_tx = `dev-bypass-${adId}`;
 
     const ad: Ad = {
       ad_id: adId,
@@ -76,7 +60,7 @@ export async function postAdTool(
       max_age: adRequest.max_age,
       location: adRequest.location,
       interests: adRequest.interests?.join(','),
-      payment_tx,
+      payment_tx: finalPaymentTx,
       media_key: mediaKey,
       created_at: now.toISOString(),
       moderation_score: moderation.score,

@@ -44,11 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - REST API ad creation now uses moderation service for scoring and visibility determination
 - Payment verification temporarily disabled in both REST API and MCP to facilitate testing
 - Updated zod version in shared package to `^3.25.76` to align with MCP SDK requirements
+- **Code refactoring and cleanup:**
+  - Extracted shared ad creation logic into `services/adCreation.ts` to eliminate duplication between REST API and MCP handlers
+  - Simplified payment handling in REST API routes (removed redundant nested try-catch blocks)
+  - Removed redundant validation from MCP tools (MCP SDK handles validation via Zod schemas before calling handlers)
+  - Removed redundant `postAdTool` wrapper and inlined direct call to `createAdService` in MCP server
+  - Fixed count query bug in `db.ts` (was using `SELECT *` instead of `SELECT COUNT(*) as count`)
+  - Cleaned up redundant try-catch blocks and unused imports
 
 ### Removed
 - Durable Objects implementation (replaced with D1)
 - Backward compatibility shims and re-exports
 - Unused MCP tools/index.ts file (functionality moved to direct SDK usage)
+- Redundant `postAdTool` wrapper file (functionality inlined in MCP server.ts)
+- Unused imports (`verifyPayment`, `calculateAdPricing`) from REST API routes
 
 ### TODO (Development Priority)
 1. ✅ **MCP protocol handler + tools** (postAd, queryAds, getAdDetails) - COMPLETED

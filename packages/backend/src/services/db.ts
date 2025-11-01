@@ -162,7 +162,7 @@ export async function queryAds(
   }
 
   // Get total count (without pagination)
-  const countQuery = query.replace(/LIMIT \? OFFSET \?/, '').replace(/ORDER BY.*$/, '');
+  const countQuery = query.replace(/SELECT \*/, 'SELECT COUNT(*) as count').replace(/LIMIT \? OFFSET \?/, '').replace(/ORDER BY.*$/, '');
   const countBindings = bindings.slice(0, -2); // Remove limit and offset
   const countResult = await db.prepare(countQuery).bind(...countBindings).first<{ count: number }>();
   const total = countResult?.count || 0;

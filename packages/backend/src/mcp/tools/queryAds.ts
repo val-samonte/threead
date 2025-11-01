@@ -8,18 +8,21 @@
  * - Age targeting filters
  * - Interest-based filtering
  * - Pagination
+ * 
+ * Input validation is handled by MCP SDK via Zod schemas in server.ts
  */
 
 import type { Env } from '../../types/env';
 import type { AdQueryParams, AdSearchResult } from '@threead/shared';
-import { validateAdQueryParams } from '@threead/shared';
 import * as dbService from '../../services/db';
 
 /**
  * Query ads via MCP
+ * 
+ * Note: Args are already validated by MCP SDK before reaching this handler
  */
 export async function queryAdsTool(
-  args: unknown,
+  args: AdQueryParams,
   env: Env
 ): Promise<{
   success: boolean;
@@ -27,30 +30,12 @@ export async function queryAdsTool(
   error?: string;
 }> {
   try {
-    // Validate input
-    const validation = validateAdQueryParams(args);
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: `Validation failed: ${validation.errors.join(', ')}`,
-      };
-    }
-
-    const params = args as AdQueryParams;
-
+    // MCP SDK already validates input with Zod schema, so we can trust the types
     // Initialize database if needed
     await dbService.initializeDatabase(env.DB);
 
     // Query ads from D1 database
-    let result: AdSearchResult;
-    try {
-      result = await dbService.queryAds(env.DB, params);
-    } catch (error) {
-      return {
-        success: false,
-        error: `Failed to query ads: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      };
-    }
+    const result = await dbService.queryAds(env.DB, args);
 
     // TODO: Apply semantic search with Vectorize if query provided
     // This will be implemented in priority 2
@@ -64,7 +49,7 @@ export async function queryAdsTool(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: `Failed to query ads: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 }
