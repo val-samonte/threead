@@ -38,8 +38,11 @@ export async function queryAdsTool(
     // If a query string is provided, use Vectorize semantic search
     if (args.query) {
       // Perform semantic search with Vectorize
+      // Vectorize limits topK to 50 when returnMetadata=true (which we use)
+      // Cap at 50 to respect this limit - we fetch more than needed for filtering
+      const topK = Math.min(args.limit ? args.limit * 3 : 100, 50);
       const vectorResults = await semanticSearch(env, args.query, {
-        topK: args.limit ? args.limit * 2 : 100, // Fetch more for filtering
+        topK,
         filter: {
           visible: true,
           min_age: args.min_age,

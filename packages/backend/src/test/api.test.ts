@@ -27,7 +27,10 @@ describe('API Endpoints', () => {
   });
 
   describe('Ads API', () => {
-    it.skip('should return 402 Payment Required when creating ad without payment', async () => {
+    it.skip('should create ad successfully without payment (payment verification deferred)', async () => {
+      // NOTE: Payment verification is currently deferred for MCP development
+      // This test verifies the current behavior - ads can be created without payment
+      // When x402 payment verification is implemented, update this test to verify 402 Payment Required
       // Remove .skip when wrangler dev is running
       const response = await fetch(`${WORKER_URL}/api/ads`, {
         method: 'POST',
@@ -36,6 +39,7 @@ describe('API Endpoints', () => {
         },
         body: JSON.stringify({
           title: 'Test Ad',
+          description: 'Test ad for API testing',
           days: 1,
         }),
       });
@@ -45,10 +49,25 @@ describe('API Endpoints', () => {
         return;
       }
 
-      expect(response.status).toBe(402);
-      const data = await response.json() as { payment?: { amountUSDC?: number } };
-      expect(data).toHaveProperty('payment');
-      expect(data.payment).toHaveProperty('amountUSDC');
+      // Currently, payment verification is bypassed, so ads can be created without payment
+      expect(response.status).toBe(201);
+      const data = await response.json() as { 
+        success?: boolean;
+        ad?: { 
+          ad_id?: string;
+          payment_tx?: string;
+          moderation_score?: number;
+          visible?: boolean;
+        };
+      };
+      expect(data.success).toBe(true);
+      expect(data.ad).toBeDefined();
+      expect(data.ad?.ad_id).toBeDefined();
+      // Payment TX should be a dev-bypass placeholder
+      expect(data.ad?.payment_tx).toContain('dev-bypass');
+      // Ad should have moderation score and visibility
+      expect(data.ad?.moderation_score).toBeDefined();
+      expect(data.ad?.visible).toBeDefined();
     });
 
     it.skip('should query ads', async () => {
