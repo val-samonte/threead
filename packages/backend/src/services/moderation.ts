@@ -36,7 +36,7 @@ const MODERATION_SYSTEM_PROMPT = `You are a content moderation system for advert
 - Misinformation or disinformation
 - Content promoting dangerous activities
 - Harassment or bullying content
-- Explicit adult content
+- Explicit adult content WITHOUT proper age gating (min_age < 18 or not set)
 
 **Score 5-6 (Borderline - Visible but Flagged):**
 - Controversial political or religious topics
@@ -44,17 +44,31 @@ const MODERATION_SYSTEM_PROMPT = `You are a content moderation system for advert
 - Sensationalist or clickbait material
 - Content that may be misleading but not illegal
 
+**Score 6-7 (Age-Restricted but Allowable - Visible):**
+- Adult/pornographic content WITH proper age gating (min_age >= 18)
+  - Adult content that is legally compliant but requires age restriction
+  - Should score 6-7 if min_age >= 18 is set correctly
+  - If min_age < 18 or not set, score should be 1-4 (inappropriate, auto-hidden)
+
 **Score 7-10 (Acceptable - Visible):**
 - Clean, appropriate content suitable for all audiences
 - Professional and respectful language
 - Clear, honest advertising
 - Content that complies with platform standards
 
+**Important Age-Gating Rules:**
+- If content is adult/pornographic/explicit:
+  - If min_age >= 18: Score 6-7 (allowable but age-gated)
+  - If min_age < 18 or not set: Score 1-4 (inappropriate, auto-hidden)
+- Always consider the age parameters (min_age, max_age) when evaluating content appropriateness
+- Content that requires age restriction but lacks proper age gating should be penalized
+
 **Instructions:**
-1. Analyze the ad title, description, and call-to-action
+1. Analyze the ad title, description, call-to-action, and age parameters (min_age, max_age)
 2. Check for any illegal, harmful, or inappropriate content
-3. Assign a score (0-10) based on the guidelines above
-4. Provide 1-3 specific reasons if score < 7
+3. Evaluate age-gating requirements - adult content must have min_age >= 18
+4. Assign a score (0-10) based on the guidelines above, considering age parameters
+5. Provide 1-3 specific reasons if score < 7
 
 **Output Format (JSON only, no markdown):**
 {
@@ -84,13 +98,15 @@ export async function moderateAd(
   const location = adRequest.location || '';
   const interests = adRequest.interests?.join(', ') || '';
 
-  // Perform AI moderation
+  // Perform AI moderation with age parameters
   const aiResult = await performAIModeration(env, {
     title,
     description,
     callToAction,
     location,
     interests,
+    minAge: adRequest.min_age,
+    maxAge: adRequest.max_age,
   });
 
   // Validate AI response
@@ -119,6 +135,8 @@ async function performAIModeration(
     callToAction: string;
     location: string;
     interests: string;
+    minAge?: number;
+    maxAge?: number;
   }
 ): Promise<{ score: number; reasons: string[] | null }> {
   // Build user message with just the ad content (dynamic part)
@@ -128,6 +146,17 @@ async function performAIModeration(
   if (content.callToAction) adContentParts.push(`Call to Action: ${content.callToAction}`);
   if (content.location) adContentParts.push(`Location: ${content.location}`);
   if (content.interests) adContentParts.push(`Interests: ${content.interests}`);
+  
+  // Include age parameters - critical for adult content moderation
+  if (content.minAge !== undefined) {
+    adContentParts.push(`Minimum Age: ${content.minAge}`);
+  }
+  if (content.maxAge !== undefined) {
+    adContentParts.push(`Maximum Age: ${content.maxAge}`);
+  }
+  if (content.minAge === undefined && content.maxAge === undefined) {
+    adContentParts.push(`Age Restriction: None`);
+  }
   
   const userMessage = adContentParts.length > 0 
     ? adContentParts.join('\n')
