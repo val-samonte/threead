@@ -3,7 +3,7 @@
  * Query and search advertisements
  * 
  * Supports:
- * - Semantic search (via query string) - TODO: Vectorize integration
+ * - Semantic search (via query string) using Vectorize
  * - Geo-based filtering (latitude, longitude, radius)
  * - Age targeting filters
  * - Interest-based filtering
@@ -13,8 +13,9 @@
  */
 
 import type { Env } from '../../types/env';
-import type { AdQueryParams, AdSearchResult } from '@threead/shared';
+import type { AdQueryParams, AdSearchResult, Ad } from '@threead/shared';
 import * as dbService from '../../services/db';
+import { semanticSearch } from '../../services/vectorize';
 
 /**
  * Query ads via MCP
@@ -34,13 +35,68 @@ export async function queryAdsTool(
     // Initialize database if needed
     await dbService.initializeDatabase(env.DB);
 
-    // Query ads from D1 database
-    const result = await dbService.queryAds(env.DB, args);
+    // If a query string is provided, use Vectorize semantic search
+    if (args.query) {
+      // Perform semantic search with Vectorize
+      const vectorResults = await semanticSearch(env, args.query, {
+        topK: args.limit ? args.limit * 2 : 100, // Fetch more for filtering
+        filter: {
+          visible: true,
+          min_age: args.min_age,
+          max_age: args.max_age,
+          interests: args.interests,
+          latitude: args.latitude,
+          longitude: args.longitude,
+          radius: args.radius,
+        },
+      });
 
-    // TODO: Apply semantic search with Vectorize if query provided
-    // This will be implemented in priority 2
-    // For now, if a query is provided, we'll just return the D1 results
-    // The semantic search will filter and rank results based on Vectorize similarity
+      // Fetch full ad details from D1 for the matched IDs
+      const adIds = vectorResults.map(r => r.id);
+      if (adIds.length === 0) {
+        return {
+          success: true,
+          result: {
+            ads: [],
+            total: 0,
+            limit: args.limit || 50,
+            offset: args.offset || 0,
+          },
+        };
+      }
+
+      // Get full ad objects from D1, preserving Vectorize ranking order
+      const adsMap = new Map<string, Ad>();
+      for (const adId of adIds) {
+        const ad = await dbService.getAd(env.DB, adId);
+        if (ad) {
+          adsMap.set(adId, ad);
+        }
+      }
+
+      // Re-order ads by Vectorize similarity score
+      const ads = vectorResults
+        .map(result => adsMap.get(result.id))
+        .filter((ad): ad is Ad => ad !== undefined);
+
+      // Apply pagination
+      const limit = args.limit || 50;
+      const offset = args.offset || 0;
+      const paginatedAds = ads.slice(offset, offset + limit);
+
+      return {
+        success: true,
+        result: {
+          ads: paginatedAds as typeof ads,
+          total: ads.length,
+          limit,
+          offset,
+        },
+      };
+    }
+
+    // No query string - use traditional D1 database query
+    const result = await dbService.queryAds(env.DB, args);
 
     return {
       success: true,

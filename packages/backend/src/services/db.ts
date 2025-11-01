@@ -10,32 +10,16 @@ import type { Ad, AdQueryParams, AdSearchResult } from '@threead/shared';
  * Initialize database schema
  */
 export async function initializeDatabase(db: D1Database): Promise<void> {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS Ads (
-      ad_id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      call_to_action TEXT,
-      link_url TEXT,
-      latitude REAL,
-      longitude REAL,
-      expiry DATETIME NOT NULL,
-      min_age INTEGER,
-      max_age INTEGER,
-      location TEXT,
-      interests TEXT,
-      payment_tx TEXT NOT NULL,
-      media_key TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      moderation_score INTEGER NOT NULL DEFAULT 10,
-      visible BOOLEAN NOT NULL DEFAULT 1
-    );
+  // Create table - use single line SQL to avoid parsing issues
+  await db.exec(
+    'CREATE TABLE IF NOT EXISTS Ads (ad_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, call_to_action TEXT, link_url TEXT, latitude REAL, longitude REAL, expiry DATETIME NOT NULL, min_age INTEGER, max_age INTEGER, location TEXT, interests TEXT, payment_tx TEXT NOT NULL, media_key TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, moderation_score INTEGER NOT NULL DEFAULT 10, visible BOOLEAN NOT NULL DEFAULT 1)'
+  );
 
-    CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry);
-    CREATE INDEX IF NOT EXISTS idx_location ON Ads(location);
-    CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests);
-    CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude);
-  `);
+  // Create indexes separately
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_location ON Ads(location)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude)');
 }
 
 /**

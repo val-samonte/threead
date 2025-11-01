@@ -7,6 +7,7 @@ import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad } from '@threead/shared';
 import { moderateAd } from './moderation';
 import * as dbService from './db';
+import { indexAd } from './vectorize';
 
 export interface CreateAdResult {
   success: boolean;
@@ -80,8 +81,11 @@ export async function createAdService(
       };
     }
 
-    // TODO: Index in Vectorize for semantic search
-    // This will be implemented in priority 2
+    // Index in Vectorize for semantic search (non-blocking)
+    // If indexing fails, ad creation still succeeds
+    await indexAd(env, ad).catch(err => {
+      console.error(`Failed to index ad ${ad.ad_id} in Vectorize:`, err);
+    });
 
     return {
       success: true,

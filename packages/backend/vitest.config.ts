@@ -4,8 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // For Cloudflare Workers testing, we'll use wrangler dev or setup files
     setupFiles: ['./src/test/setup.ts'],
+    testTimeout: 30000, // Vectorize indexing can take time
   },
 });
 

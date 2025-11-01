@@ -9,6 +9,9 @@ export interface Env {
   // Vectorize
   VECTORIZE: Vectorize;
 
+  // Workers AI (for embeddings)
+  AI: Ai;
+
   // R2
   MEDIA_BUCKET: R2Bucket;
 

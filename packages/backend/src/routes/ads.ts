@@ -7,6 +7,7 @@ import type { CreateAdRequest, Ad, AdQueryParams, AdSearchResult } from '@threea
 import { validateAdRequest } from '@threead/shared';
 import { createAdService } from '../services/adCreation';
 import * as dbService from '../services/db';
+import { semanticSearch } from '../services/vectorize';
 
 export async function handleAdsRoute(
   request: Request,
@@ -100,10 +101,72 @@ async function getAds(request: Request, env: Env, path: string): Promise<Respons
     // Initialize database if needed (idempotent)
     await dbService.initializeDatabase(env.DB);
 
-    // Query ads from D1 database
+    // If a query string is provided, use Vectorize semantic search
+    if (params.query) {
+      // Perform semantic search with Vectorize
+      const vectorResults = await semanticSearch(env, params.query, {
+        topK: params.limit ? params.limit * 2 : 100, // Fetch more for filtering
+        filter: {
+          visible: true,
+          min_age: params.min_age,
+          max_age: params.max_age,
+          interests: params.interests,
+          latitude: params.latitude,
+          longitude: params.longitude,
+          radius: params.radius,
+        },
+      });
+
+      // Fetch full ad details from D1 for the matched IDs
+      const adIds = vectorResults.map(r => r.id);
+      if (adIds.length === 0) {
+        const emptyResult: AdSearchResult = {
+          ads: [],
+          total: 0,
+          limit: params.limit || 50,
+          offset: params.offset || 0,
+        };
+        return new Response(
+          JSON.stringify(emptyResult),
+          { 
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      // Get full ad objects from D1, preserving Vectorize ranking order
+      const ads: Ad[] = [];
+      for (const adId of adIds) {
+        const ad = await dbService.getAd(env.DB, adId);
+        if (ad) {
+          ads.push(ad);
+        }
+      }
+
+      // Apply pagination
+      const limit = params.limit || 50;
+      const offset = params.offset || 0;
+      const paginatedAds = ads.slice(offset, offset + limit);
+
+      const result: AdSearchResult = {
+        ads: paginatedAds,
+        total: ads.length,
+        limit,
+        offset,
+      };
+
+      return new Response(
+        JSON.stringify(result),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // No query string - use traditional D1 database query
     const result = await dbService.queryAds(env.DB, params);
-    
-    // TODO: Apply semantic search with Vectorize if query provided
 
     return new Response(
       JSON.stringify(result),
