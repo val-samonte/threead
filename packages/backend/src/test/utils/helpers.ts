@@ -2,7 +2,6 @@
  * Shared test utilities for API integration tests
  */
 
-import { generatePayerKeypair } from './payment';
 import bs58 from 'bs58';
 
 const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
@@ -66,22 +65,6 @@ export async function createAdWithPayment(
       ...adData,
     }),
   });
-}
-
-/**
- * Helper to create a payer keypair and optionally fund it
- * Returns the payer keypair and a function to create payment transactions
- */
-export async function createPayer(): Promise<{
-  publicKey: string;
-  createPayment: (amount: number, recipientTokenAccount: string) => Promise<string>;
-}> {
-  const payer = await generatePayerKeypair();
-  
-  return {
-    publicKey: payer.publicKeyBase58,
-    createPayment: payer.createPaymentTransaction,
-  };
 }
 
 export { WORKER_URL };

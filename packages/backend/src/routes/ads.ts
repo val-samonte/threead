@@ -85,7 +85,7 @@ async function createAd(request: Request, env: Env): Promise<Response> {
     // Verify payment amount and recipient
     const expectedAmount = calculateAdPricing(body.days, !!body.media);
     // Derive ATA from treasury wallet address
-    const recipientTokenAccount = getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
+    const recipientTokenAccount = await getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
     const paymentVerification = await verifyPayment(
       body.payment_tx,
       expectedAmount.priceSmallestUnits,

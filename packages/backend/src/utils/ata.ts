@@ -1,11 +1,11 @@
 /**
  * Associated Token Account (ATA) derivation
- * Uses @solana/spl-token for accuracy (it's already a dev dependency)
+ * Uses @solana/addresses for accurate PDA derivation (part of @solana/kit ecosystem)
  */
 
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { PublicKey } from '@solana/web3.js';
 import { address } from '@solana/kit';
+import { getAddressEncoder, getProgramDerivedAddress } from '@solana/addresses';
+import type { Address } from '@solana/addresses';
 
 // SPL Token Program IDs (constants)
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
@@ -13,26 +13,38 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8kn
 
 /**
  * Derive Associated Token Account (ATA) address for a wallet and token mint
- * This implements the PDA derivation algorithm manually
+ * Uses @solana/addresses getProgramDerivedAddress for accurate derivation
  * 
  * @param mintAddress - Token mint address (base58 string)
  * @param ownerAddress - Wallet owner address (base58 string)
  * @returns ATA address as base58 string
  */
-export function getAssociatedTokenAddress(
+export async function getAssociatedTokenAddress(
   mintAddress: string,
   ownerAddress: string
-): string {
+): Promise<string> {
   // Validate addresses are valid base58
   address(mintAddress);
   address(ownerAddress);
   
-  // Use @solana/spl-token's official implementation for accuracy
-  // This ensures we get the exact same ATA as the Solana ecosystem expects
-  const mint = new PublicKey(mintAddress);
-  const owner = new PublicKey(ownerAddress);
-  const ata = getAssociatedTokenAddressSync(mint, owner);
+  // Get address encoder for converting addresses to seed bytes
+  const addressEncoder = getAddressEncoder();
   
-  return ata.toBase58();
+  // ATA seeds: [owner, token_program_id, mint]
+  // This matches the SPL Token specification exactly
+  const seeds = [
+    addressEncoder.encode(ownerAddress as Address),
+    addressEncoder.encode(TOKEN_PROGRAM_ID as Address),
+    addressEncoder.encode(mintAddress as Address),
+  ];
+  
+  // Derive PDA using Associated Token Program
+  const [pda] = await getProgramDerivedAddress({
+    programAddress: ASSOCIATED_TOKEN_PROGRAM_ID as Address,
+    seeds,
+  });
+  
+  // Return the PDA address as a string
+  return pda;
 }
 

@@ -9,7 +9,6 @@
 import {
   generateKeyPairSigner,
   createKeyPairSignerFromBytes,
-  address as parseAddress,
 } from '@solana/kit';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -87,8 +86,8 @@ export async function generatePayerKeypair(): Promise<TestPayerKeypair> {
     );
     
     // Derive both token accounts for USDC transfer
-    const faucetTokenAccount = getAssociatedTokenAddress(usdcMint, faucetPublicKeyBase58);
-    const payerTokenAccount = getAssociatedTokenAddress(usdcMint, publicKeyBase58);
+    const faucetTokenAccount = await getAssociatedTokenAddress(usdcMint, faucetPublicKeyBase58);
+    const payerTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKeyBase58);
     
     // Transfer USDC from faucet to payer
     // Note: recipientOwner is the payer's wallet (owner of the ATA), usdcMint is needed for ATA creation
@@ -116,7 +115,7 @@ export async function generatePayerKeypair(): Promise<TestPayerKeypair> {
     const rpcUrl = 'https://api.devnet.solana.com';
     
     // Derive payer's USDC token account (ATA)
-    const payerTokenAccount = getAssociatedTokenAddress(usdcMint, publicKeyBase58);
+    const payerTokenAccount = await getAssociatedTokenAddress(usdcMint, publicKeyBase58);
     
     // Extract recipient owner from environment (treasury wallet)
     const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';

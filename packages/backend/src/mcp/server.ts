@@ -91,7 +91,7 @@ function getMCPServer(env: Env): McpServer {
         // Verify payment amount and recipient
         const expectedAmount = calculateAdPricing(args.days, !!args.media);
         // Derive ATA from treasury wallet address
-        const recipientTokenAccount = getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
+        const recipientTokenAccount = await getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
         const paymentVerification = await verifyPayment(
           args.payment_tx,
           expectedAmount.priceSmallestUnits,

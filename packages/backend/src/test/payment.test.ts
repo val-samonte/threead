@@ -57,7 +57,7 @@ describe('Payment Verification Tests', () => {
       // Derive treasury ATA from wallet address (from env or test constants)
       const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
       const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
       
       // Create actual payment transaction
       const paymentTx = await payer.createPaymentTransaction(
@@ -82,7 +82,7 @@ describe('Payment Verification Tests', () => {
       // Derive treasury ATA from wallet address
       const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
       const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
       
       // Create payment transaction
       const paymentTx = await payer.createPaymentTransaction(
@@ -159,7 +159,7 @@ describe('Payment Verification Tests', () => {
       // Derive treasury ATA from wallet address
       const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
       const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
       
       // Create payment with insufficient amount (but still a valid transaction)
       const paymentTx = await payer.createPaymentTransaction(
