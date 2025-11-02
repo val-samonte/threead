@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Impression tracking system with deduplication**
+  - Created `Impressions` database table to track ad views with source attribution (MCP vs app)
+  - Added impression tracking endpoint: `GET/POST /api/ads/:id/impression?source=mcp|app`
+  - Endpoint returns JSON response with success status
+  - Tracks metadata: source (mcp/app), user agent, referrer, IP address
+  - **Server-side deduplication**: Prevents duplicate impressions from same `ad_id + IP + user_agent` within 30-minute window
+  - Automatic impression tracking in MCP tools:
+    - `queryAds` tracks impressions for all returned ads (batch insert with deduplication)
+    - `getAdDetails` tracks impression when ad details are retrieved
+  - Batch impression recording for efficiency (used in MCP queryAds)
+  - Non-blocking tracking: failures don't break ad queries
+  - Database service functions: `recordImpression()` (returns boolean for dedupe status), `recordImpressions()` (returns count), `getImpressionCount()`
+  - Composite index on `(ad_id, ip_address, user_agent, created_at)` for fast deduplication lookups
+- **Click tracking system with redirect proxy**
+  - Created `Clicks` database table to track when users click ad links
+  - Added click tracking endpoint: `GET /api/ads/:id/click?source=mcp|app` (redirects to ad `link_url`)
+  - Server-side deduplication: Prevents duplicate clicks from same `ad_id + IP + user_agent` within 30-minute window
+  - Non-blocking click recording: tracking happens asynchronously, redirect is immediate
+  - Frontend should use proxy URL instead of direct `link_url`: `/api/ads/{ad_id}/click?source=app`
+  - Database service functions: `recordClick()` (returns boolean for dedupe status), `getClickCount()`
+  - Composite index on `(ad_id, ip_address, user_agent, created_at)` for fast deduplication lookups
+  - Integration tests: `analytics.test.ts` covers impression tracking, click tracking, deduplication, and metadata capture
 - **AI-generated tags for ad categorization**
   - Created tag generation service (`services/tags.ts`) using Cloudflare Workers AI
   - 30 predefined tags available (job, services, product, finance, etc.)

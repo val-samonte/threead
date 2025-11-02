@@ -60,6 +60,28 @@ export async function initializeDatabase(db: D1Database): Promise<void> {
   }
   
   await db.exec('CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude)');
+
+  // Create Impressions table
+  await db.exec(
+    'CREATE TABLE IF NOT EXISTS Impressions (impression_id TEXT PRIMARY KEY, ad_id TEXT NOT NULL, source TEXT NOT NULL, user_agent TEXT, referrer TEXT, ip_address TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (ad_id) REFERENCES Ads(ad_id) ON DELETE CASCADE)'
+  );
+
+  // Create indexes for Impressions
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_impressions_ad_id ON Impressions(ad_id)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_impressions_source ON Impressions(source)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_impressions_created_at ON Impressions(created_at)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_impressions_dedup ON Impressions(ad_id, ip_address, user_agent, created_at)');
+
+  // Create Clicks table
+  await db.exec(
+    'CREATE TABLE IF NOT EXISTS Clicks (click_id TEXT PRIMARY KEY, ad_id TEXT NOT NULL, source TEXT NOT NULL, user_agent TEXT, referrer TEXT, ip_address TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (ad_id) REFERENCES Ads(ad_id) ON DELETE CASCADE)'
+  );
+
+  // Create indexes for Clicks
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_clicks_ad_id ON Clicks(ad_id)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_clicks_source ON Clicks(source)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_clicks_created_at ON Clicks(created_at)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_clicks_dedup ON Clicks(ad_id, ip_address, user_agent, created_at)');
 }
 
 /**
@@ -297,5 +319,178 @@ export async function cleanupExpired(db: D1Database): Promise<number> {
   `).run();
 
   return result.meta.changes || 0;
+}
+
+/**
+ * Impression tracking
+ */
+export interface ImpressionData {
+  ad_id: string;
+  source: 'mcp' | 'app';
+  user_agent?: string;
+  referrer?: string;
+  ip_address?: string;
+}
+
+/**
+ * Record an impression with deduplication
+ * Only records if no impression exists for the same ad_id + IP + user_agent within the last 30 minutes
+ */
+export async function recordImpression(
+  db: D1Database,
+  data: ImpressionData
+): Promise<boolean> {
+  // Check for existing impression within 30 minutes (deduplication window)
+  if (data.ip_address && data.user_agent) {
+    const existing = await db.prepare(`
+      SELECT impression_id FROM Impressions
+      WHERE ad_id = ? 
+        AND ip_address = ? 
+        AND user_agent = ?
+        AND created_at > datetime('now', '-30 minutes')
+      LIMIT 1
+    `).bind(data.ad_id, data.ip_address, data.user_agent).first<{ impression_id: string }>();
+
+    // If duplicate found within time window, skip recording
+    if (existing) {
+      return false;
+    }
+  }
+
+  // Record new impression
+  const impressionId = crypto.randomUUID();
+  
+  await db.prepare(`
+    INSERT INTO Impressions (
+      impression_id, ad_id, source, user_agent, referrer, ip_address
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+    impressionId,
+    data.ad_id,
+    data.source,
+    data.user_agent || null,
+    data.referrer || null,
+    data.ip_address || null
+  ).run();
+
+  return true;
+}
+
+/**
+ * Get impression count for an ad
+ */
+export async function getImpressionCount(
+  db: D1Database,
+  adId: string,
+  source?: 'mcp' | 'app'
+): Promise<number> {
+  let query = 'SELECT COUNT(*) as count FROM Impressions WHERE ad_id = ?';
+  const bindings: unknown[] = [adId];
+  
+  if (source) {
+    query += ' AND source = ?';
+    bindings.push(source);
+  }
+  
+  const result = await db.prepare(query).bind(...bindings).first<{ count: number }>();
+  return result?.count || 0;
+}
+
+/**
+ * Batch record impressions (for MCP queries that return multiple ads)
+ * Applies deduplication logic to each impression
+ */
+export async function recordImpressions(
+  db: D1Database,
+  impressions: ImpressionData[]
+): Promise<number> {
+  if (impressions.length === 0) return 0;
+  
+  let recorded = 0;
+  
+  // Process each impression with deduplication
+  for (const data of impressions) {
+    const wasRecorded = await recordImpression(db, data);
+    if (wasRecorded) {
+      recorded++;
+    }
+  }
+  
+  return recorded;
+}
+
+/**
+ * Click tracking
+ */
+export interface ClickData {
+  ad_id: string;
+  source: 'mcp' | 'app';
+  user_agent?: string;
+  referrer?: string;
+  ip_address?: string;
+}
+
+/**
+ * Record a click with deduplication
+ * Only records if no click exists for the same ad_id + IP + user_agent within the last 30 minutes
+ */
+export async function recordClick(
+  db: D1Database,
+  data: ClickData
+): Promise<boolean> {
+  // Check for existing click within 30 minutes (deduplication window)
+  if (data.ip_address && data.user_agent) {
+    const existing = await db.prepare(`
+      SELECT click_id FROM Clicks
+      WHERE ad_id = ? 
+        AND ip_address = ? 
+        AND user_agent = ?
+        AND created_at > datetime('now', '-30 minutes')
+      LIMIT 1
+    `).bind(data.ad_id, data.ip_address, data.user_agent).first<{ click_id: string }>();
+
+    // If duplicate found within time window, skip recording but still return true (click happened)
+    if (existing) {
+      return false;
+    }
+  }
+
+  // Record new click
+  const clickId = crypto.randomUUID();
+  
+  await db.prepare(`
+    INSERT INTO Clicks (
+      click_id, ad_id, source, user_agent, referrer, ip_address
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+    clickId,
+    data.ad_id,
+    data.source,
+    data.user_agent || null,
+    data.referrer || null,
+    data.ip_address || null
+  ).run();
+
+  return true;
+}
+
+/**
+ * Get click count for an ad
+ */
+export async function getClickCount(
+  db: D1Database,
+  adId: string,
+  source?: 'mcp' | 'app'
+): Promise<number> {
+  let query = 'SELECT COUNT(*) as count FROM Clicks WHERE ad_id = ?';
+  const bindings: unknown[] = [adId];
+  
+  if (source) {
+    query += ' AND source = ?';
+    bindings.push(source);
+  }
+  
+  const result = await db.prepare(query).bind(...bindings).first<{ count: number }>();
+  return result?.count || 0;
 }
 

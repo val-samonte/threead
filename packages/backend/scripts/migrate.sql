@@ -31,3 +31,43 @@ CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests);
 CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags);
 CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude);
 
+-- Impressions tracking table
+CREATE TABLE IF NOT EXISTS Impressions (
+    impression_id TEXT PRIMARY KEY,      -- UUID v4 string
+    ad_id TEXT NOT NULL,                 -- Foreign key to Ads.ad_id
+    source TEXT NOT NULL,                 -- 'mcp' or 'app'
+    user_agent TEXT,                     -- Browser/agent string
+    referrer TEXT,                       -- Referrer URL
+    ip_address TEXT,                     -- Client IP (hashed for privacy)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (ad_id) REFERENCES Ads(ad_id) ON DELETE CASCADE
+);
+
+-- Indexes for impressions queries
+CREATE INDEX IF NOT EXISTS idx_impressions_ad_id ON Impressions(ad_id);
+CREATE INDEX IF NOT EXISTS idx_impressions_source ON Impressions(source);
+CREATE INDEX IF NOT EXISTS idx_impressions_created_at ON Impressions(created_at);
+-- Composite index for deduplication: check same ad_id + ip_address + user_agent within time window
+CREATE INDEX IF NOT EXISTS idx_impressions_dedup ON Impressions(ad_id, ip_address, user_agent, created_at);
+
+-- Clicks tracking table (tracks when users click the ad link)
+CREATE TABLE IF NOT EXISTS Clicks (
+    click_id TEXT PRIMARY KEY,            -- UUID v4 string
+    ad_id TEXT NOT NULL,                 -- Foreign key to Ads.ad_id
+    source TEXT NOT NULL,                 -- 'mcp' or 'app'
+    user_agent TEXT,                     -- Browser/agent string
+    referrer TEXT,                       -- Referrer URL
+    ip_address TEXT,                      -- Client IP (hashed for privacy)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (ad_id) REFERENCES Ads(ad_id) ON DELETE CASCADE
+);
+
+-- Indexes for clicks queries
+CREATE INDEX IF NOT EXISTS idx_clicks_ad_id ON Clicks(ad_id);
+CREATE INDEX IF NOT EXISTS idx_clicks_source ON Clicks(source);
+CREATE INDEX IF NOT EXISTS idx_clicks_created_at ON Clicks(created_at);
+-- Composite index for click deduplication (optional - same logic as impressions if needed)
+CREATE INDEX IF NOT EXISTS idx_clicks_dedup ON Clicks(ad_id, ip_address, user_agent, created_at);
+

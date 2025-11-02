@@ -88,6 +88,21 @@ export async function queryAdsTool(
       const offset = args.offset || 0;
       const paginatedAds = ads.slice(offset, offset + limit);
 
+      // Track impressions for returned ads (non-blocking)
+      // Use batch insert for efficiency
+      if (paginatedAds.length > 0) {
+        dbService.recordImpressions(
+          env.DB,
+          paginatedAds.map(ad => ({
+            ad_id: ad.ad_id,
+            source: 'mcp' as const,
+          }))
+        ).catch(err => {
+          // Non-blocking - don't fail the query if tracking fails
+          console.error('Failed to track MCP impressions:', err);
+        });
+      }
+
       return {
         success: true,
         result: {
@@ -101,6 +116,20 @@ export async function queryAdsTool(
 
     // No query string - use traditional D1 database query
     const result = await dbService.queryAds(env.DB, args);
+
+    // Track impressions for returned ads (non-blocking)
+    if (result.ads.length > 0) {
+      dbService.recordImpressions(
+        env.DB,
+        result.ads.map(ad => ({
+          ad_id: ad.ad_id,
+          source: 'mcp' as const,
+        }))
+      ).catch(err => {
+        // Non-blocking - don't fail the query if tracking fails
+        console.error('Failed to track MCP impressions:', err);
+      });
+    }
 
     return {
       success: true,

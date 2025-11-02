@@ -36,6 +36,15 @@ export async function getAdDetailsTool(
       };
     }
 
+    // Track impression (non-blocking)
+    dbService.recordImpression(env.DB, {
+      ad_id: args.ad_id,
+      source: 'mcp',
+    }).catch(err => {
+      // Non-blocking - don't fail the query if tracking fails
+      console.error('Failed to track MCP impression:', err);
+    });
+
     return {
       success: true,
       ad,

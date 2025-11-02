@@ -16,6 +16,26 @@ export async function handleAdsRoute(
 ): Promise<Response> {
   const method = request.method;
 
+  // Handle impression tracking endpoint: /api/ads/:id/impression
+  const impressionMatch = path.match(/^\/api\/ads\/([^/]+)\/impression$/);
+  if (impressionMatch) {
+    const adId = impressionMatch[1];
+    if (method === 'POST' || method === 'GET') {
+      return await trackImpression(request, env, adId);
+    }
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  // Handle click tracking endpoint: /api/ads/:id/click (redirects to ad link_url)
+  const clickMatch = path.match(/^\/api\/ads\/([^/]+)\/click$/);
+  if (clickMatch) {
+    const adId = clickMatch[1];
+    if (method === 'GET') {
+      return await trackClick(request, env, adId);
+    }
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
   if (method === 'POST') {
     return await createAd(request, env);
   } else if (method === 'GET') {
@@ -190,6 +210,175 @@ async function getAds(request: Request, env: Env, path: string): Promise<Respons
         headers: { 'Content-Type': 'application/json' }
       }
     );
+  }
+}
+
+/**
+ * Track an impression for an ad
+ * Supports both POST and GET
+ * Query params: ?source=mcp|app
+ */
+async function trackImpression(
+  request: Request,
+  env: Env,
+  adId: string
+): Promise<Response> {
+  try {
+    // Initialize database if needed
+    await dbService.initializeDatabase(env.DB);
+
+    // Verify ad exists
+    const ad = await dbService.getAd(env.DB, adId);
+    if (!ad) {
+      return new Response(
+        JSON.stringify({ error: 'Ad not found' }),
+        { 
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          }
+        }
+      );
+    }
+
+    // Get source from query param (defaults to 'app' for REST API)
+    const url = new URL(request.url);
+    const sourceParam = url.searchParams.get('source') || 'app';
+    const source = (sourceParam === 'mcp' || sourceParam === 'app') 
+      ? sourceParam 
+      : 'app';
+
+    // Extract metadata from request
+    const userAgent = request.headers.get('user-agent') || undefined;
+    const referrer = request.headers.get('referer') || url.searchParams.get('ref') || undefined;
+    
+    // Extract IP address (Cloudflare-specific)
+    // Cloudflare sets CF-Connecting-IP header
+    const ipAddress = request.headers.get('cf-connecting-ip') || 
+                     request.headers.get('x-forwarded-for')?.split(',')[0] || 
+                     undefined;
+
+    // Record impression
+    await dbService.recordImpression(env.DB, {
+      ad_id: adId,
+      source,
+      user_agent: userAgent,
+      referrer,
+      ip_address: ipAddress,
+    });
+
+    return new Response(
+      JSON.stringify({ success: true, ad_id: adId, source }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
+  } catch (error) {
+    console.error('Failed to track impression:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      }
+    );
+  }
+}
+
+/**
+ * Track a click and redirect to ad link_url
+ * Query params: ?source=mcp|app
+ */
+async function trackClick(
+  request: Request,
+  env: Env,
+  adId: string
+): Promise<Response> {
+  try {
+    // Initialize database if needed
+    await dbService.initializeDatabase(env.DB);
+
+    // Get ad from database
+    const ad = await dbService.getAd(env.DB, adId);
+    if (!ad) {
+      return new Response('Ad not found', { status: 404 });
+    }
+
+    // Verify ad has a link_url
+    if (!ad.link_url) {
+      return new Response('Ad has no link URL', { status: 400 });
+    }
+
+    // Get source from query param (defaults to 'app' for REST API)
+    const url = new URL(request.url);
+    const sourceParam = url.searchParams.get('source') || 'app';
+    const source = (sourceParam === 'mcp' || sourceParam === 'app') 
+      ? sourceParam 
+      : 'app';
+
+    // Extract metadata from request
+    const userAgent = request.headers.get('user-agent') || undefined;
+    const referrer = request.headers.get('referer') || url.searchParams.get('ref') || undefined;
+    
+    // Extract IP address (Cloudflare-specific)
+    const ipAddress = request.headers.get('cf-connecting-ip') || 
+                     request.headers.get('x-forwarded-for')?.split(',')[0] || 
+                     undefined;
+
+    // Record click (non-blocking - don't delay redirect)
+    dbService.recordClick(env.DB, {
+      ad_id: adId,
+      source,
+      user_agent: userAgent,
+      referrer,
+      ip_address: ipAddress,
+    }).catch(err => {
+      // Log error but don't fail redirect
+      console.error('Failed to track click:', err);
+    });
+
+    // Redirect to ad link_url
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': ad.link_url,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
+  } catch (error) {
+    console.error('Failed to handle click:', error);
+    // Even on error, try to redirect if we have the URL
+    try {
+      const ad = await dbService.getAd(env.DB, adId);
+      if (ad?.link_url) {
+        return new Response(null, {
+          status: 302,
+          headers: { 'Location': ad.link_url },
+        });
+      }
+    } catch {
+      // Ignore errors here
+    }
+    return new Response('Internal server error', { status: 500 });
   }
 }
 
