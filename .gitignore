@@ -43,3 +43,6 @@ coverage/
 # AI assistant rules (should not be committed)
 .cursorrules
 
+# Solana keypairs (never commit these!)
+*.keypair.json
+

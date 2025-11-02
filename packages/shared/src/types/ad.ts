@@ -4,6 +4,7 @@
 
 export interface Ad {
   ad_id: string; // UUID v4
+  author: string; // Solana public key (wallet address) of ad creator
   title: string;
   description?: string;
   call_to_action?: string;

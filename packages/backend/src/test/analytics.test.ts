@@ -12,34 +12,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-
-const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
-
-/**
- * Verify worker is accessible with real bindings
- */
-async function requireWorkerRunning(): Promise<void> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    
-    const response = await fetch(`${WORKER_URL}/health`, {
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      throw new Error(`Worker health check failed: ${response.status}`);
-    }
-  } catch (error) {
-    throw new Error(
-      `Worker not accessible at ${WORKER_URL}. ` +
-      `Make sure wrangler dev is running: cd packages/backend && npm run dev\n` +
-      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-  }
-}
+import { requireWorkerRunning, createAdWithPayment, WORKER_URL } from './utils/helpers';
 
 describe('Analytics Tracking Tests', () => {
   let testAdId: string;
@@ -50,16 +23,12 @@ describe('Analytics Tracking Tests', () => {
     await requireWorkerRunning();
 
     // Create a test ad for tracking tests
-    const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const createResponse = await createAdWithPayment({
         title: 'Test Ad for Analytics',
         description: 'This ad is used to test impression and click tracking',
         link_url: 'https://example.com/test-ad',
         location: 'Test Location',
         days: 30,
-      }),
     });
 
     if (!createResponse.ok) {
@@ -265,14 +234,10 @@ describe('Analytics Tracking Tests', () => {
 
     it('should return 400 for ad without link_url', async () => {
       // Create an ad without link_url
-      const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const createResponse = await createAdWithPayment({
           title: 'Ad Without Link',
           description: 'This ad has no link URL',
           days: 30,
-        }),
       });
 
       const createData = await createResponse.json() as { ad?: { ad_id?: string } };

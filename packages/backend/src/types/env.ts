@@ -17,7 +17,7 @@ export interface Env {
 
   // Environment variables
   SOLANA_RPC_URL: string;
-  RECIPIENT_WALLET: string;
-  RECIPIENT_TOKEN_ACCOUNT: string;
+  USDC_MINT: string; // USDC mint address (devnet/mainnet specific)
+  RECIPIENT_WALLET: string; // Treasury wallet address (ATA will be derived from this)
 }
 

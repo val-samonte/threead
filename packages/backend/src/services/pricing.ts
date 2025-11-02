@@ -2,7 +2,7 @@
  * Pricing calculation service
  */
 
-import { calculatePrice, usdcToSmallestUnits } from '@threead/shared';
+import { calculatePriceSmallestUnits, smallestUnitsToUSDC } from '@threead/shared';
 
 export interface PricingCalculation {
   days: number;
@@ -12,8 +12,9 @@ export interface PricingCalculation {
 }
 
 export function calculateAdPricing(days: number, hasImage: boolean): PricingCalculation {
-  const priceUSDC = calculatePrice(days, hasImage);
-  const priceSmallestUnits = usdcToSmallestUnits(priceUSDC);
+  // Calculate directly in smallest units to avoid floating point precision issues
+  const priceSmallestUnits = calculatePriceSmallestUnits(days, hasImage);
+  const priceUSDC = smallestUnitsToUSDC(priceSmallestUnits);
 
   return {
     days,

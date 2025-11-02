@@ -18,6 +18,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { queryAdsTool } from './tools/queryAds';
 import { getAdDetailsTool } from './tools/getAdDetails';
 import { createAdService } from '../services/adCreation';
+import { extractPayerFromTransaction, verifyPayment } from '../services/solana';
+import { calculateAdPricing } from '../services/pricing';
+import { getAssociatedTokenAddress } from '../utils/ata';
 import type { CreateAdRequest, AdQueryParams } from '@threead/shared';
 import { z } from 'zod';
 
@@ -47,8 +50,9 @@ function getMCPServer(env: Env): McpServer {
     // No validation rules are compromised - this is purely a type system workaround.
     mcpServer.tool(
       'postAd',
-      'Post a new advertisement to Three.ad. Creates an ad that will be displayed to users matching the criteria.',
+      'Post a new advertisement to Three.ad. Creates an ad that will be displayed to users matching the criteria. Requires payment_tx (x402 payment transaction signature) - the author will be extracted from the payment transaction.',
       {
+        payment_tx: z.string().min(1, 'Payment transaction signature (x402 payment) is required').regex(/^[1-9A-HJ-NP-Za-km-z]+$/, 'Must be valid base58 characters'),
         title: z.string().min(1).max(200),
         description: z.string().max(2000).optional(),
         call_to_action: z.string().max(100).optional(),
@@ -66,8 +70,67 @@ function getMCPServer(env: Env): McpServer {
       // We use 'any' for args parameter because SDK type inference is broken by 'as any' on schema
       // VALIDATION IS PRESERVED: MCP SDK validates with zod before handler is called
       (async (args: any) => {
+        // Extract author (payer) from payment transaction
+        const extractedPayer = await extractPayerFromTransaction(args.payment_tx, env);
+        
+        if (!extractedPayer) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  success: false,
+                  error: 'Failed to extract payer from payment transaction',
+                  details: 'The payment transaction signature may be invalid or the transaction not found',
+                }),
+              },
+            ],
+          };
+        }
+
+        // Verify payment amount and recipient
+        const expectedAmount = calculateAdPricing(args.days, !!args.media);
+        // Derive ATA from treasury wallet address
+        const recipientTokenAccount = getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
+        const paymentVerification = await verifyPayment(
+          args.payment_tx,
+          expectedAmount.priceSmallestUnits,
+          recipientTokenAccount,
+          env
+        );
+
+        if (!paymentVerification.valid || !paymentVerification.payer) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  success: false,
+                  error: 'Payment verification failed',
+                  details: paymentVerification.error || 'Could not verify payment transaction',
+                }),
+              },
+            ],
+          };
+        }
+
+        // Ensure extracted payer matches payment verification payer
+        if (paymentVerification.payer !== extractedPayer) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  success: false,
+                  error: 'Payer mismatch between transaction extraction and verification',
+                }),
+              },
+            ],
+          };
+        }
+
         // Directly call createAdService since it already handles all logic and error formatting
-        const result = await createAdService(args as CreateAdRequest, env);
+        const result = await createAdService(args as CreateAdRequest, extractedPayer, env, args.payment_tx);
         return {
           content: [
             {

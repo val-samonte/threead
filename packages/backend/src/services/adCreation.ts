@@ -18,17 +18,22 @@ export interface CreateAdResult {
 
 /**
  * Create a new ad (shared implementation for REST API and MCP)
- * During development, payment verification is bypassed
+ * @param adRequest - The ad creation request (user-provided data)
+ * @param author - The Solana address of the ad creator (extracted from payment transaction)
+ * @param env - Environment with database and services
+ * @param paymentTx - Optional payment transaction signature (defaults to adRequest.payment_tx)
  */
 export async function createAdService(
   adRequest: CreateAdRequest,
+  author: string,
   env: Env,
   paymentTx?: string
 ): Promise<CreateAdResult> {
   try {
-    // Generate ad ID and payment TX if not provided
+    // Generate ad ID
     const adId = crypto.randomUUID();
-    const finalPaymentTx = paymentTx || `dev-bypass-${adId}`;
+    // Use provided payment_tx (either from x402 payment or dev-bypass)
+    const finalPaymentTx = paymentTx || (adRequest.payment_tx || `dev-bypass-${adId}`);
 
     // TODO: Upload media to R2 if provided
     let mediaKey: string | undefined;
@@ -57,6 +62,7 @@ export async function createAdService(
 
     const ad: Ad = {
       ad_id: adId,
+      author,
       title: adRequest.title,
       description: adRequest.description,
       call_to_action: adRequest.call_to_action,

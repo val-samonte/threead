@@ -4,6 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS Ads (
     ad_id TEXT PRIMARY KEY,           -- UUID v4 string
+    author TEXT NOT NULL,             -- Solana public key (wallet address) of ad creator
     title TEXT NOT NULL,
     description TEXT,
     call_to_action TEXT,

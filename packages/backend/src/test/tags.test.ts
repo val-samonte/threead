@@ -11,34 +11,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-
-const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
-
-/**
- * Verify worker is accessible with real bindings
- */
-async function requireWorkerRunning(): Promise<void> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    
-    const response = await fetch(`${WORKER_URL}/health`, {
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      throw new Error(`Worker health check failed: ${response.status}`);
-    }
-  } catch (error) {
-    throw new Error(
-      `Worker not accessible at ${WORKER_URL}. ` +
-      `Make sure wrangler dev is running: cd packages/backend && npm run dev\n` +
-      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-  }
-}
+import { requireWorkerRunning, createAdWithPayment } from './utils/helpers';
 
 describe('Tag Generation Service Tests', () => {
   beforeAll(async () => {
@@ -48,10 +21,7 @@ describe('Tag Generation Service Tests', () => {
   describe('Service ad', () => {
     it('should generate tags including "services" for service-based ads', async () => {
       // Create ad via API - tag generation runs automatically with real AI
-      const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const createResponse = await createAdWithPayment({
           title: 'Professional Plumbing Services',
           description: 'Experienced plumber available 24/7. We handle all types of plumbing repairs, installations, and maintenance. Licensed and insured. Call for free estimates.',
           call_to_action: 'Call now for service',
@@ -59,7 +29,6 @@ describe('Tag Generation Service Tests', () => {
           location: 'San Francisco, CA',
           interests: ['plumbing', 'repair', 'services'],
           days: 30,
-        }),
       });
 
       if (!createResponse.ok) {
@@ -93,10 +62,7 @@ describe('Tag Generation Service Tests', () => {
   describe('Finance ad', () => {
     it('should generate tags including "finance" for financial service ads', async () => {
       // Create ad via API - tag generation runs automatically with real AI
-      const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const createResponse = await createAdWithPayment({
           title: 'Investment Advisory Services',
           description: 'Certified financial advisor offering personalized investment strategies. Retirement planning, portfolio management, and wealth building consultation. Schedule a free consultation today.',
           call_to_action: 'Book free consultation',
@@ -104,7 +70,6 @@ describe('Tag Generation Service Tests', () => {
           location: 'New York, NY',
           interests: ['finance', 'investment', 'business'],
           days: 60,
-        }),
       });
 
       if (!createResponse.ok) {
@@ -138,10 +103,7 @@ describe('Tag Generation Service Tests', () => {
   describe('Product ad', () => {
     it('should generate tags including "product" for product sales ads', async () => {
       // Create ad via API - tag generation runs automatically with real AI
-      const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const createResponse = await createAdWithPayment({
           title: 'Vintage Leather Jackets for Sale',
           description: 'Authentic vintage leather jackets in excellent condition. Various sizes and styles available. Limited collection, all hand-picked. Perfect for collectors and fashion enthusiasts.',
           call_to_action: 'Browse collection',
@@ -149,7 +111,6 @@ describe('Tag Generation Service Tests', () => {
           location: 'Los Angeles, CA',
           interests: ['clothing', 'vintage', 'fashion'],
           days: 14,
-        }),
       });
 
       if (!createResponse.ok) {

@@ -14,34 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-
-const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
-
-/**
- * Verify worker is accessible with real bindings
- */
-async function requireWorkerRunning(): Promise<void> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    
-    const response = await fetch(`${WORKER_URL}/health`, {
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      throw new Error(`Worker health check failed: ${response.status}`);
-    }
-  } catch (error) {
-    throw new Error(
-      `Worker not accessible at ${WORKER_URL}. ` +
-      `Make sure wrangler dev is running: cd packages/backend && npm run dev\n` +
-      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-  }
-}
+import { requireWorkerRunning, createAdWithPayment, WORKER_URL } from './utils/helpers';
 
 describe('Vectorize Service Tests', () => {
   const testAdIds: string[] = [];
@@ -58,10 +31,7 @@ describe('Vectorize Service Tests', () => {
   describe('indexAd via API (tests Vectorize remotely)', () => {
     it('should index ad and make it searchable via semantic search', async () => {
       // Create ad via API - this calls indexAd() which uses real Vectorize bindings
-      const createResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const createResponse = await createAdWithPayment({
           title: 'Best Pizza in San Francisco',
           description: 'Authentic Italian pizza with wood-fired oven. We serve the best margherita and pepperoni pizza in the Bay Area.',
           location: 'San Francisco, CA',
@@ -69,7 +39,6 @@ describe('Vectorize Service Tests', () => {
           days: 7,
           latitude: 37.7749,
           longitude: -122.4194,
-        }),
       });
 
       if (!createResponse.ok) {
@@ -117,14 +86,10 @@ describe('Vectorize Service Tests', () => {
     it('should find semantically similar ads', async () => {
       // Create multiple ads with similar but different wording
       // Using clear, professional content that should pass moderation
-      const ad1Response = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const ad1Response = await createAdWithPayment({
           title: 'Sushi Bar Tokyo - Premium Japanese Restaurant',
           description: 'Fresh Japanese sushi and sashimi. Traditional recipes with high-quality ingredients. Family-friendly dining experience.',
           days: 7,
-        }),
       });
       const ad1 = await ad1Response.json() as { ad?: { ad_id?: string; visible?: boolean; moderation_score?: number } };
       
@@ -136,14 +101,10 @@ describe('Vectorize Service Tests', () => {
       // Indexing verified by successful upsert (no exception in ad creation)
       // Note: getByIds has eventual consistency, so we don't verify via getByIds
 
-      const ad2Response = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const ad2Response = await createAdWithPayment({
           title: 'Japanese Cuisine Restaurant - Authentic Dishes',
           description: 'Authentic Japanese dishes including sushi rolls. Professional chefs and welcoming atmosphere.',
           days: 7,
-        }),
       });
       const ad2 = await ad2Response.json() as { ad?: { ad_id?: string; visible?: boolean; moderation_score?: number } };
       
@@ -183,17 +144,13 @@ describe('Vectorize Service Tests', () => {
   describe('Vectorize filters', () => {
     it('should combine semantic search with geo filters', async () => {
       // Create ad in San Francisco
-      const sfAdResponse = await fetch(`${WORKER_URL}/api/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const sfAdResponse = await createAdWithPayment({
           title: 'Coffee Shop',
           description: 'Best coffee in SF',
           location: 'San Francisco',
           days: 7,
           latitude: 37.7749,
           longitude: -122.4194,
-        }),
       });
       const sfAd = await sfAdResponse.json() as { ad?: { ad_id?: string } };
       expect(sfAd.ad?.ad_id).toBeDefined();

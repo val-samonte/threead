@@ -5,6 +5,7 @@
 import { z } from 'zod';
 
 export const CreateAdRequestSchema = z.object({
+  payment_tx: z.string().min(1, 'Payment transaction signature (x402 payment) is required').regex(/^[1-9A-HJ-NP-Za-km-z]+$/, 'Invalid Solana transaction signature format'),
   title: z.string().min(1, 'Title is required').max(200, 'Title must be 200 characters or less'),
   description: z.string().max(2000, 'Description too long').optional(),
   call_to_action: z.string().max(100).optional(),

@@ -2,73 +2,43 @@
  * x402 Payment types
  */
 
-export interface PaymentRequirements {
-  recipientWallet: string;
-  tokenAccount: string;
-  mint: string;
-  amount: number; // Amount in smallest units (e.g., 100000 for 0.1 USDC)
-  amountUSDC: number; // Amount in USDC (e.g., 0.1)
-  cluster: 'devnet' | 'mainnet';
-  message?: string;
-}
-
-export interface X402PaymentProof {
-  x402Version: number;
-  scheme: 'exact';
-  network: 'solana-devnet' | 'solana-mainnet';
-  payload: {
-    serializedTransaction: string; // Base64 encoded transaction
-  };
-}
-
-export interface PaymentVerificationResult {
-  valid: boolean;
-  amount: number;
-  amountUSDC: number;
-  signature: string;
-  recipient: string;
-  explorerUrl: string;
-  error?: string;
-}
+// Pricing constants in smallest units (USDC has 6 decimals)
+const BASE_PRICE_SMALLEST_UNITS = 100_000; // 0.1 USDC
+const ADDITIONAL_DAY_PRICE_SMALLEST_UNITS = 50_000; // 0.05 USDC
+const IMAGE_PRICE_SMALLEST_UNITS = 1_000_000; // 1.0 USDC
+const USDC_DECIMALS = 1_000_000;
 
 /**
- * Pricing calculation
- * - Starts at 0.1 USDC for a day
- * - Additional days: 0.05 USDC
- * - With image: +1 USDC
+ * Calculate price in smallest units (avoids floating point precision issues)
+ * - Starts at 0.1 USDC for a day (100000 smallest units)
+ * - Additional days: 0.05 USDC each (50000 smallest units)
+ * - With image: +1 USDC (1000000 smallest units)
  */
-export function calculatePrice(days: number, hasImage: boolean): number {
+export function calculatePriceSmallestUnits(days: number, hasImage: boolean): number {
   if (days < 1) {
     throw new Error('Days must be at least 1');
   }
   
   // Base price: 0.1 USDC for first day
-  let price = 0.1;
+  let price = BASE_PRICE_SMALLEST_UNITS;
   
   // Additional days: 0.05 USDC each
   if (days > 1) {
-    price += (days - 1) * 0.05;
+    price += (days - 1) * ADDITIONAL_DAY_PRICE_SMALLEST_UNITS;
   }
   
   // With image: +1 USDC
   if (hasImage) {
-    price += 1.0;
+    price += IMAGE_PRICE_SMALLEST_UNITS;
   }
   
   return price;
 }
 
 /**
- * Convert USDC amount to smallest units (assuming 6 decimals)
- */
-export function usdcToSmallestUnits(usdc: number): number {
-  return Math.round(usdc * 1_000_000);
-}
-
-/**
  * Convert smallest units to USDC
  */
 export function smallestUnitsToUSDC(units: number): number {
-  return units / 1_000_000;
+  return units / USDC_DECIMALS;
 }
 

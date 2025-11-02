@@ -1,6 +1,7 @@
 name = "threead-backend"
 main = "src/index.ts"
 compatibility_date = "2025-11-01"
+compatibility_flags = ["nodejs_compat"]
 
 # D1 Database
 [[d1_databases]]
@@ -37,10 +38,12 @@ remote = true
 binding = "MEDIA_BUCKET"
 bucket_name = "threead-media"
 
-# Environment variables (set via wrangler secret)
-# SOLANA_RPC_URL - Solana RPC endpoint
-# RECIPIENT_WALLET - Wallet to receive payments
-# RECIPIENT_TOKEN_ACCOUNT - USDC token account for payments
+# Environment variables (set via wrangler secret or .dev.vars)
+# SOLANA_RPC_URL - Solana RPC endpoint (devnet/mainnet)
+# USDC_MINT - USDC mint address (network-specific)
+#   Devnet: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+#   Mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+# RECIPIENT_WALLET - Treasury wallet address (ATA will be derived automatically)
 
 # Local development
 [dev]

@@ -54,16 +54,20 @@ curl http://localhost:8787/api/ads
 Create `.dev.vars` file for local development:
 
 ```toml
-SOLANA_RPC_URL=https://api.devnet.solana.com
-RECIPIENT_WALLET=your_wallet_address
-RECIPIENT_TOKEN_ACCOUNT=your_usdc_token_account
+# Solana network configuration
+SOLANA_RPC_URL=https://api.devnet.solana.com  # or https://api.mainnet-beta.solana.com
+USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU  # Devnet USDC
+# USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v  # Mainnet USDC
+
+# Treasury configuration
+RECIPIENT_WALLET=your_wallet_address  # Treasury wallet address (ATA will be derived automatically)
 ```
 
 Or set via wrangler:
 ```bash
 wrangler secret put SOLANA_RPC_URL
+wrangler secret put USDC_MINT
 wrangler secret put RECIPIENT_WALLET
-wrangler secret put RECIPIENT_TOKEN_ACCOUNT
 ```
 
 ## D1 Database
