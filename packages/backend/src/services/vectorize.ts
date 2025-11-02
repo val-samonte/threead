@@ -55,7 +55,7 @@ async function generateEmbedding(env: Env, text: string): Promise<number[]> {
 
 /**
  * Build text representation of ad for semantic search
- * Combines title, description, location, and interests
+ * Combines title, description, location, interests, and tags
  */
 function buildAdText(ad: Ad): string {
   const parts: string[] = [];
@@ -65,6 +65,7 @@ function buildAdText(ad: Ad): string {
   if (ad.location) parts.push(ad.location);
   if (ad.interests) parts.push(ad.interests);
   if (ad.call_to_action) parts.push(ad.call_to_action);
+  if (ad.tags && ad.tags.length > 0) parts.push(ad.tags.join(' '));
   
   return parts.join(' ').trim();
 }
@@ -94,7 +95,7 @@ export async function indexAd(env: Env, ad: Ad): Promise<void> {
     // VectorizeVectorMetadata = VectorizeVectorMetadataValue | Record<string, VectorizeVectorMetadataValue>
     // where VectorizeVectorMetadataValue = string | number | boolean | string[]
     // Note: Vectorize may accept null in practice even if types don't include it
-    const metadata: Record<string, string | number | boolean | null> = {
+    const metadata: Record<string, string | number | boolean | string[] | null> = {
       ad_id: ad.ad_id,
       visible: ad.visible ? 1 : 0,
       expiry: ad.expiry,
@@ -103,6 +104,7 @@ export async function indexAd(env: Env, ad: Ad): Promise<void> {
       latitude: ad.latitude ?? null,
       longitude: ad.longitude ?? null,
       interests: ad.interests ?? null,
+      tags: ad.tags && ad.tags.length > 0 ? ad.tags.join(',') : null,
       moderation_score: ad.moderation_score,
     };
 
@@ -147,6 +149,7 @@ export async function semanticSearch(
       min_age?: number;
       max_age?: number;
       interests?: string[];
+      tags?: string[];
       latitude?: number;
       longitude?: number;
       radius?: number; // in km
@@ -248,6 +251,16 @@ export async function semanticSearch(
         if (!adInterests) return false;
         const interestList = adInterests.split(',');
         return options.filter!.interests!.some(interest => interestList.includes(interest));
+      });
+    }
+
+    // Apply tags filtering
+    if (options.filter?.tags && options.filter.tags.length > 0) {
+      results = results.filter(match => {
+        const adTags = match.metadata?.tags as string | null | undefined;
+        if (!adTags) return false;
+        const tagList = adTags.split(',');
+        return options.filter!.tags!.some(tag => tagList.includes(tag));
       });
     }
 

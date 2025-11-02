@@ -48,6 +48,7 @@ export async function queryAdsTool(
           min_age: args.min_age,
           max_age: args.max_age,
           interests: args.interests,
+          tags: args.tags,
           latitude: args.latitude,
           longitude: args.longitude,
           radius: args.radius,

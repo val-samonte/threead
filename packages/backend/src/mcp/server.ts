@@ -83,7 +83,7 @@ function getMCPServer(env: Env): McpServer {
     // NOTE: `as any` below is ONLY for TypeScript types - validations work at runtime via SDK
     mcpServer.tool(
       'queryAds',
-      'Search and query advertisements using semantic search, location, age, and interest filters.',
+      'Search and query advertisements using semantic search, location, age, interest, and tag filters.',
       {
         query: z.string().optional(),
         latitude: z.number().min(-90).max(90).optional(),
@@ -92,6 +92,7 @@ function getMCPServer(env: Env): McpServer {
         min_age: z.number().int().min(0).optional(),
         max_age: z.number().int().min(0).optional(),
         interests: z.array(z.string()).optional(),
+        tags: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).optional(),
       } as any, // Type assertion for monorepo zod version compatibility - validations still work

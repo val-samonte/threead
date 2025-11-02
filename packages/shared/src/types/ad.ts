@@ -15,6 +15,7 @@ export interface Ad {
   max_age?: number;
   location?: string; // For semantics
   interests?: string; // Comma-separated (≤5), e.g., "pizza,cheap,berkeley"
+  tags?: string[]; // AI-generated tags (≤5), e.g., ["job", "services"]
   payment_tx: string; // Solana transaction signature
   media_key?: string; // R2 object key
   created_at: string; // ISO 8601 datetime

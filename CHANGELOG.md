@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **AI-generated tags for ad categorization**
+  - Created tag generation service (`services/tags.ts`) using Cloudflare Workers AI
+  - 30 predefined tags available (job, services, product, finance, etc.)
+  - AI analyzes ad content (title, description, call-to-action, location, interests) and generates 2-5 relevant tags
+  - Tags stored in both D1 database (comma-separated) and Vectorize (for semantic search)
+  - Tag filtering supported in both REST API and MCP query endpoints
+  - Enhanced semantic search with tags included in embeddings and metadata
+  - Database migration support for adding tags column to existing databases
+  - Unit tests for tag generation (service, finance, product categories)
 - Initial project setup with monorepo structure (npm workspaces)
 - Backend foundation with Cloudflare Workers
 - D1 database integration for ad storage
@@ -48,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Setup instructions in `wrangler.toml` for creating Vectorize index
 
 ### Changed
+- **Enhanced tag generation prompt for better product identification**
+  - Explicitly marks "product" tag as CRITICAL for physical items being sold
+  - Clarified product vs services distinction in AI prompt
+  - Added examples and rules for when to use product tag
 - **Moderation service refactored to pure AI-only**
   - Removed keyword-based fallback moderation
   - Moderation now requires Cloudflare Workers AI binding and fails if AI is unavailable

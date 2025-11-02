@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS Ads (
     max_age INTEGER,
     location TEXT,                    -- for semantics
     interests TEXT,                   -- "pizza,cheap,berkeley" (≤5)
+    tags TEXT,                        -- AI-generated tags, comma-separated (≤5), e.g., "job,services,product"
     payment_tx TEXT NOT NULL,         -- Solana tx signature (x402 proof)
     media_key TEXT,                   -- R2 object key
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -27,5 +28,6 @@ CREATE TABLE IF NOT EXISTS Ads (
 CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry);
 CREATE INDEX IF NOT EXISTS idx_location ON Ads(location);
 CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests);
+CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags);
 CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude);
 

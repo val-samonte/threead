@@ -93,7 +93,8 @@ async function getAds(request: Request, env: Env, path: string): Promise<Respons
       radius: url.searchParams.get('radius') ? parseFloat(url.searchParams.get('radius')!) : undefined,
       min_age: url.searchParams.get('min_age') ? parseInt(url.searchParams.get('min_age')!) : undefined,
       max_age: url.searchParams.get('max_age') ? parseInt(url.searchParams.get('max_age')!) : undefined,
-      interests: url.searchParams.get('interests')?.split(','),
+      interests: url.searchParams.get('interests')?.split(',').filter(i => i.length > 0),
+      tags: url.searchParams.get('tags')?.split(',').filter(t => t.length > 0),
       limit: url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : 50,
       offset: url.searchParams.get('offset') ? parseInt(url.searchParams.get('offset')!) : 0,
     };
@@ -114,6 +115,7 @@ async function getAds(request: Request, env: Env, path: string): Promise<Respons
           min_age: params.min_age,
           max_age: params.max_age,
           interests: params.interests,
+          tags: params.tags,
           latitude: params.latitude,
           longitude: params.longitude,
           radius: params.radius,

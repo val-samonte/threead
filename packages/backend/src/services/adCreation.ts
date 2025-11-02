@@ -6,6 +6,7 @@
 import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad } from '@threead/shared';
 import { moderateAd } from './moderation';
+import { generateTags } from './tags';
 import * as dbService from './db';
 import { indexAd } from './vectorize';
 
@@ -43,6 +44,12 @@ export async function createAdService(
     // Run moderation with AI (if available)
     const moderation = await moderateAd(adRequest, env);
 
+    // Generate tags with AI (non-blocking - continue if it fails)
+    const tags = await generateTags(adRequest, env).catch(err => {
+      console.error('Failed to generate tags:', err);
+      return [] as string[];
+    });
+
     // Create ad record
     const now = new Date();
     const expiry = new Date(now);
@@ -61,6 +68,7 @@ export async function createAdService(
       max_age: adRequest.max_age,
       location: adRequest.location,
       interests: adRequest.interests?.join(','),
+      tags: tags.length > 0 ? tags : undefined,
       payment_tx: finalPaymentTx,
       media_key: mediaKey,
       created_at: now.toISOString(),

@@ -12,13 +12,53 @@ import type { Ad, AdQueryParams, AdSearchResult } from '@threead/shared';
 export async function initializeDatabase(db: D1Database): Promise<void> {
   // Create table - use single line SQL to avoid parsing issues
   await db.exec(
-    'CREATE TABLE IF NOT EXISTS Ads (ad_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, call_to_action TEXT, link_url TEXT, latitude REAL, longitude REAL, expiry DATETIME NOT NULL, min_age INTEGER, max_age INTEGER, location TEXT, interests TEXT, payment_tx TEXT NOT NULL, media_key TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, moderation_score INTEGER NOT NULL DEFAULT 10, visible BOOLEAN NOT NULL DEFAULT 1)'
+    'CREATE TABLE IF NOT EXISTS Ads (ad_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, call_to_action TEXT, link_url TEXT, latitude REAL, longitude REAL, expiry DATETIME NOT NULL, min_age INTEGER, max_age INTEGER, location TEXT, interests TEXT, tags TEXT, payment_tx TEXT NOT NULL, media_key TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, moderation_score INTEGER NOT NULL DEFAULT 10, visible BOOLEAN NOT NULL DEFAULT 1)'
   );
+
+  // Migrate: Add tags column if it doesn't exist (for existing databases)
+  // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we try and ignore duplicate column errors
+  try {
+    await db.exec('ALTER TABLE Ads ADD COLUMN tags TEXT');
+  } catch (error) {
+    // Column already exists - this is expected for existing databases that already have the column
+    // Ignore duplicate column errors, but re-throw other errors
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!errorMsg.includes('duplicate column') && !errorMsg.includes('already exists') && !errorMsg.includes('duplicate')) {
+      // Re-throw if it's a different error (not a duplicate column error)
+      throw error;
+    }
+    // Otherwise, column already exists, which is fine - continue
+  }
 
   // Create indexes separately
   await db.exec('CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_location ON Ads(location)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests)');
+  
+  // Create tags index (will only succeed if tags column exists)
+  // If it fails because column doesn't exist, we'll retry after ensuring column exists
+  try {
+    await db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags)');
+  } catch (error) {
+    // Index creation failed - likely because column doesn't exist
+    // Try to add the column again (maybe it failed silently above) and retry index
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('no such column')) {
+      // Column truly doesn't exist - try adding it one more time
+      try {
+        await db.exec('ALTER TABLE Ads ADD COLUMN tags TEXT');
+        // Now retry index creation
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags)');
+      } catch (retryError) {
+        // If this still fails, log warning but don't throw - migration issue
+        console.warn(`Failed to add tags column or create index: ${errorMsg}`);
+      }
+    } else {
+      // Different error - might be index already exists, which is fine
+      console.warn(`Index creation warning (may already exist): ${errorMsg}`);
+    }
+  }
+  
   await db.exec('CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude)');
 }
 
@@ -30,9 +70,9 @@ export async function createAd(db: D1Database, ad: Ad): Promise<void> {
     INSERT INTO Ads (
       ad_id, title, description, call_to_action, link_url,
       latitude, longitude, expiry, min_age, max_age,
-      location, interests, payment_tx, media_key,
+      location, interests, tags, payment_tx, media_key,
       created_at, moderation_score, visible
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     ad.ad_id,
     ad.title,
@@ -46,6 +86,7 @@ export async function createAd(db: D1Database, ad: Ad): Promise<void> {
     ad.max_age || null,
     ad.location || null,
     ad.interests || null,
+    ad.tags?.join(',') || null,
     ad.payment_tx,
     ad.media_key || null,
     ad.created_at,
@@ -64,8 +105,14 @@ export async function getAd(db: D1Database, adId: string): Promise<Ad | null> {
 
   if (!result) return null;
 
+  // Parse tags from comma-separated string to array
+  const tags = result.tags
+    ? (result.tags as string).split(',').filter(tag => tag.trim().length > 0)
+    : undefined;
+
   return {
     ...result,
+    tags,
     visible: (result.visible as number) === 1,
   } as Ad;
 }
@@ -97,6 +144,15 @@ export async function queryAds(
     bindings.push(...params.interests);
   }
 
+  // Tags filter
+  if (params.tags && params.tags.length > 0) {
+    // For comma-separated tags, check if any tag matches
+    // Using LIKE for pattern matching since tags are comma-separated
+    const tagConditions = params.tags.map(() => 'tags LIKE ?').join(' OR ');
+    query += ` AND (${tagConditions})`;
+    bindings.push(...params.tags.map(tag => `%${tag}%`));
+  }
+
   // Geo distance filter (using Haversine formula approximation)
   if (params.latitude !== undefined && params.longitude !== undefined && params.radius !== undefined) {
     // SQLite doesn't have built-in geo functions, but we can use approximation
@@ -123,10 +179,18 @@ export async function queryAds(
 
   const result = await db.prepare(query).bind(...bindings).all<Record<string, unknown>>();
 
-  let ads = (result.results || []).map(ad => ({
-    ...ad,
-    visible: (ad.visible as number) === 1,
-  })) as Ad[];
+  let ads = (result.results || []).map(ad => {
+    // Parse tags from comma-separated string to array
+    const tags = ad.tags
+      ? (ad.tags as string).split(',').filter(tag => tag.trim().length > 0)
+      : undefined;
+
+    return {
+      ...ad,
+      tags,
+      visible: (ad.visible as number) === 1,
+    } as Ad;
+  });
 
   // Calculate actual distance for geo queries and sort
   if (params.latitude !== undefined && params.longitude !== undefined && params.radius !== undefined) {
@@ -188,7 +252,7 @@ export async function updateAd(db: D1Database, adId: string, updates: Partial<Ad
     UPDATE Ads SET
       title = ?, description = ?, call_to_action = ?, link_url = ?,
       latitude = ?, longitude = ?, expiry = ?, min_age = ?, max_age = ?,
-      location = ?, interests = ?, media_key = ?,
+      location = ?, interests = ?, tags = ?, media_key = ?,
       moderation_score = ?, visible = ?
     WHERE ad_id = ?
   `).bind(
@@ -203,6 +267,7 @@ export async function updateAd(db: D1Database, adId: string, updates: Partial<Ad
     updated.max_age || null,
     updated.location || null,
     updated.interests || null,
+    updated.tags?.join(',') || null,
     updated.media_key || null,
     updated.moderation_score,
     updated.visible ? 1 : 0,

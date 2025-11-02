@@ -50,6 +50,7 @@ export const AdQueryParamsSchema = z.object({
   min_age: z.number().int().min(0).optional(),
   max_age: z.number().int().min(0).optional(),
   interests: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
 }).refine(
