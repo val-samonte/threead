@@ -62,7 +62,7 @@ Three.ad frontend will use **TanStack Router** for routing and **TanStack Query*
 **Ad Card Format:**
 ```
 ┌─────────────┐
-│   Image     │  (from og:image meta tag or fallback)
+│   Image     │  (from R2 upload or og:image meta tag or fallback)
 │             │
 ├─────────────┤
 │   Title     │  (ad.title)
@@ -72,7 +72,8 @@ Three.ad frontend will use **TanStack Router** for routing and **TanStack Query*
 └─────────────┘
 ```
 - Clicking card → opens `ad.link_url` in new tab
-- Image sourced from scraping `og:image` meta tag from `link_url`
+- Image priority: R2 uploaded image (`ad.media_key`) → scraped `og:image` from `link_url` → fallback placeholder
+- `og:image` scraping performed client-side (frontend-only, no backend)
 
 **File:** `routes/search/index.tsx`
 
@@ -93,13 +94,20 @@ Three.ad frontend will use **TanStack Router** for routing and **TanStack Query*
 - Description (optional, max 2000 chars)
 - Call to Action (optional, max 100 chars)
 - Link URL (optional, valid URL)
+- **Image Upload** (optional, via R2) - File input for image upload
+  - Supports common image formats (JPEG, PNG, WebP)
+  - Preview before submission
+  - Uploaded to Cloudflare R2 storage
 - Location (optional, max 200 chars)
 - Days (required, 1-365)
 - Latitude/Longitude (optional, both or neither)
 - Min Age / Max Age (optional, numeric)
 - Interests (optional, max 5, array)
 
-**Note:** Media upload deferred - will scrape og:image from link_url instead
+**Image Handling:**
+- If image uploaded → uses R2 uploaded image
+- If no upload but `link_url` provided → frontend scrapes `og:image` client-side
+- If neither → uses fallback placeholder
 
 **File:** `routes/ad/new.tsx`
 
@@ -133,7 +141,8 @@ src/
 │   ├── ad/
 │   │   ├── AdCard.tsx             # Individual ad card component
 │   │   ├── AdMasonry.tsx          # Masonry grid wrapper
-│   │   └── AdForm.tsx             # Ad creation form
+│   │   ├── AdForm.tsx             # Ad creation form
+│   │   └── ImageUpload.tsx        # R2 image upload component
 │   │
 │   └── ui/
 │       ├── Button.tsx              # Base button component
@@ -144,7 +153,8 @@ src/
 │   ├── useWallet.ts               # @solana/kit wallet integration
 │   ├── useAds.ts                  # Ad fetching/mutations (uses TanStack Query)
 │   ├── usePayment.ts              # x402 payment handling
-│   └── useOGImage.ts              # Scrape og:image from URLs
+│   ├── useOGImage.ts              # Scrape og:image from URLs (client-side)
+│   └── useR2Upload.ts             # R2 image upload hook
 │
 ├── atoms/                          # Jotai atoms
 │   ├── adAtom.ts                   # Ad-related state
@@ -153,7 +163,8 @@ src/
 ├── lib/
 │   ├── api.ts                      # API client (calls /api/ads endpoints)
 │   ├── solana.ts                   # Solana config
-│   └── og-scraper.ts               # Utility to scrape og:image from URLs
+│   ├── og-scraper.ts               # Utility to scrape og:image from URLs (client-side)
+│   └── r2-upload.ts                # R2 image upload utility
 │
 ├── App.tsx                         # Main app component (TanStack Router)
 ├── main.tsx                        # Entry point
@@ -167,7 +178,10 @@ src/
 1. **Routing:** TanStack Router with file-based routing
 2. **Data Fetching:** TanStack Query for API calls
 3. **State:** Jotai for atoms (wallet, UI state)
-4. **Image Handling:** Scrape `og:image` from `link_url` instead of R2 upload
+4. **Image Handling:** 
+   - R2 image upload supported in ad creation form
+   - `og:image` scraping performed client-side (frontend-only, no backend)
+   - Image priority: R2 upload → scraped og:image → fallback
 5. **Layout Transition:** Landing page → Results page on search submission
 6. **Card Click:** Opens `link_url` in new tab
 
@@ -186,19 +200,18 @@ src/
    - Should there be an animation when transitioning from landing to results?
    - Or instant layout shift?
 
-4. **Image Scraping:**
-   - Should `og:image` be scraped on frontend (client-side)?
-   - Or add a backend service endpoint to fetch/scrape?
-   - Caching strategy for scraped images?
-
-5. **Mobile Responsiveness:**
+4. **Mobile Responsiveness:**
    - How should 320px sidebar behave on mobile?
    - Drawer/modal that slides in?
    - Hidden by default, toggle button?
 
-6. **Pagination/Infinite Scroll:**
+5. **Pagination/Infinite Scroll:**
    - How to handle large result sets?
    - Pagination buttons or infinite scroll for masonry?
+
+6. **Image Caching:**
+   - Caching strategy for scraped `og:image` URLs?
+   - Browser cache or in-memory cache for repeated queries?
 
 ## Implementation Priority
 
@@ -212,8 +225,10 @@ src/
 ### Phase 2: Ad Creation (Deferred)
 1. Create `/ad/new` route
 2. Build AdForm component
-3. Connect form to `/api/ads` POST endpoint
-4. Handle form validation (using shared Zod schemas)
+3. Implement R2 image upload functionality
+4. Add client-side `og:image` scraping for link URLs
+5. Connect form to `/api/ads` POST endpoint
+6. Handle form validation (using shared Zod schemas)
 
 ### Phase 3: Enhancements (Future)
 1. AI chat sidebar functionality
@@ -240,6 +255,7 @@ src/
 **Endpoints Used:**
 - `GET /api/ads?query={q}&...` - Search/query ads
 - `POST /api/ads` - Create new ad (Phase 2)
+- `POST /api/upload` - Upload image to R2 (if separate endpoint, or handled in POST /api/ads)
 - `GET /api/ads/:id` - Get ad details (optional, future)
 
 **TanStack Query Setup:**
