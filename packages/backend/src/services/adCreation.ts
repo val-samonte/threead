@@ -7,6 +7,7 @@ import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad } from '@threead/shared';
 import { moderateAd } from './moderation';
 import { generateTags } from './tags';
+import { analyzeAdWithAI } from './aiAnalysis';
 import * as dbService from './db';
 import { indexAd } from './vectorize';
 
@@ -34,8 +35,6 @@ export async function createAdService(
   try {
     // Generate ad ID
     const adId = crypto.randomUUID();
-    // Use provided payment_tx (required for rollback tracking)
-    const finalPaymentTx = paymentTx;
 
     // TODO: Upload media to R2 if provided
     let mediaKey: string | undefined;
@@ -48,32 +47,54 @@ export async function createAdService(
       };
     }
 
-    // Run moderation with AI (if available)
-    // If moderation fails, default to visible with score 10 (fail open)
-    let moderation;
-    try {
-      moderation = await moderateAd(adRequest, env);
-    } catch (error) {
-      console.error('Failed to moderate ad:', error);
-      // Fail open - default to visible with score 10 if moderation fails
-      moderation = {
-        score: 10,
-        visible: true,
-      };
-    }
+    // Use combined AI analysis (moderation + tagging) in a single call for better performance
+    const aiResult = await analyzeAdWithAI(adRequest, env);
 
-    // Generate tags with AI - MANDATORY: fail if tag generation fails
-    const tagResult = await generateTags(adRequest, env);
-    
-    if (!tagResult.success || !tagResult.tags || tagResult.tags.length === 0) {
-      return {
-        success: false,
-        error: tagResult.error || 'Failed to generate tags. Tag generation is required for ad creation.',
-        details: tagResult.details,
-      };
-    }
+    let moderation: { score: number; visible: boolean };
+    let tags: string[];
 
-    const tags = tagResult.tags;
+    if (!aiResult.success) {
+      // Fallback to separate calls if combined fails
+      console.warn('[createAdService] Combined AI analysis failed, falling back to separate calls:', aiResult.error);
+      
+      // Run moderation with AI (if available)
+      // If moderation fails, default to visible with score 10 (fail open)
+      try {
+        moderation = await moderateAd(adRequest, env);
+      } catch (error) {
+        console.error('Failed to moderate ad:', error);
+        // Fail open - default to visible with score 10 if moderation fails
+        moderation = {
+          score: 10,
+          visible: true,
+        };
+      }
+
+      // Generate tags with AI - MANDATORY: fail if tag generation fails
+      const tagResult = await generateTags(adRequest, env);
+      
+      if (!tagResult.success || !tagResult.tags || tagResult.tags.length === 0) {
+        return {
+          success: false,
+          error: tagResult.error || 'Failed to generate tags. Tag generation is required for ad creation.',
+          details: tagResult.details,
+        };
+      }
+
+      tags = tagResult.tags;
+    } else {
+      // Combined analysis succeeded - use results
+      if (!aiResult.moderation || !aiResult.tags || aiResult.tags.length === 0) {
+        return {
+          success: false,
+          error: aiResult.error || 'Combined AI analysis returned incomplete results',
+          details: aiResult.details || 'Moderation or tags missing from AI response',
+        };
+      }
+
+      moderation = aiResult.moderation;
+      tags = aiResult.tags;
+    }
 
     // Create ad record
     const now = new Date();
@@ -94,7 +115,7 @@ export async function createAdService(
       max_age: adRequest.max_age,
       location: adRequest.location,
       interests: adRequest.interests?.join(','),
-      tags: tags, // Tags are mandatory, so always include them as array
+      tags: tags,
       payment_tx: paymentTx,
       media_key: mediaKey,
       created_at: now.toISOString(),

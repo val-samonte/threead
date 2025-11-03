@@ -104,68 +104,53 @@ export async function createAndSendSolTransfer(
     amount: BigInt(amountLamports),
   });
   
-  console.log('[SOL Transfer] Source (faucet) address:', fromAddress);
-  console.log('[SOL Transfer] Destination (payer) address:', toAddress);
-  console.log('[SOL Transfer] Amount:', amountLamports, 'lamports');
-  console.log('[SOL Transfer] Instruction accounts:', transferInstruction.accounts.map((a, i) => ({
-    index: i,
-    address: a.address,
-    role: a.role,
-    signer: 'signer' in a ? !!a.signer : false,
-  })));
-  console.log('[SOL Transfer] Instruction program:', transferInstruction.programAddress);
-  
   // Build transaction message following QuickNode guide pattern exactly
   // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
   // where each builder function returns a progressively more specific type that TypeScript can't infer
   let transactionMessage: any = createTransactionMessage({ version: 0 });
   transactionMessage = setTransactionMessageFeePayerSigner(signer, transactionMessage);
-  console.log('[SOL Transfer] Fee payer set:', transactionMessage.feePayer?.address);
   transactionMessage = setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, transactionMessage);
   transactionMessage = appendTransactionMessageInstruction(transferInstruction, transactionMessage);
-  console.log('[SOL Transfer] Instructions count:', transactionMessage.instructions.length);
-  console.log('[SOL Transfer] Static account keys count:', transactionMessage.staticAccountKeys?.length || 'N/A');
   
   // Sign transaction using signTransactionMessageWithSigners (as per QuickNode guide)
   const signedTransaction = await signTransactionMessageWithSigners(transactionMessage);
-  console.log('[SOL Transfer] Transaction signed, has signatures:', !!signedTransaction.signatures);
   
   // Get signature BEFORE sending (so we have it even if confirmation fails)
   const signature = getSignatureFromTransaction(signedTransaction);
-  console.log('[SOL Transfer] Transaction signature:', signature);
   
   // Send and confirm transaction using factory pattern
-  console.log('[SOL Transfer] Sending transaction...');
   const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
   
   try {
     // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
     // The signed transaction has all required properties but TypeScript can't infer the exact type
     await sendAndConfirmTransaction(signedTransaction as any, { commitment: 'confirmed' });
-    console.log('[SOL Transfer] Transaction confirmed!');
   } catch (error: any) {
     // Transaction might have succeeded but confirmation failed
-    // Check if transaction actually exists and succeeded
-    console.warn('[SOL Transfer] Confirmation error, but transaction may have succeeded:', error.message);
-    console.warn('[SOL Transfer] Signature:', signature, '- Check on explorer if transaction succeeded');
-    
-    // Try to verify the transaction actually succeeded
-    try {
-      // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
-      // NOTE: Type assertion needed due to @solana/kit RPC type limitations
-      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
-      if (txResponse && !txResponse.meta?.err) {
-        console.log('[SOL Transfer] Transaction verification: SUCCESS (transaction succeeded despite confirmation error)');
-        return signature;
-      } else {
-        throw error; // Transaction actually failed, re-throw
+    // Try to verify the transaction actually succeeded with retries (RPC indexing delay)
+    let verified = false;
+    for (let retry = 0; retry < 3; retry++) {
+      if (retry > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * retry)); // 1s, 2s delays
       }
-    } catch (verifyError) {
-      // Can't verify, but transaction might still succeed - return signature anyway
-      // The caller can verify later
-      console.warn('[SOL Transfer] Could not verify transaction, but signature is:', signature);
-      return signature;
+      
+      try {
+        // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
+        // NOTE: Type assertion needed due to @solana/kit RPC type limitations
+        const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
+        if (txResponse && !txResponse.meta?.err) {
+          // Transaction succeeded despite confirmation error
+          verified = true;
+          return signature;
+        }
+      } catch (verifyError) {
+        // Continue to next retry
+        continue;
+      }
     }
+    
+    // Could not verify transaction after retries - likely failed
+    throw error;
   }
   
   return signature;
@@ -232,13 +217,13 @@ async function tokenAccountExists(rpc: any, tokenAccount: string): Promise<boole
 
 /**
  * Create and send a USDC token transfer transaction
- * Automatically creates recipient ATA if it doesn't exist
+ * Automatically creates treasury ATA if it doesn't exist
  * 
  * @param signer - The signer (payer) for the transaction
  * @param payerAddress - Payer's wallet address (base58)
  * @param payerTokenAccount - Payer's USDC token account address (ATA)
- * @param recipientTokenAccount - Recipient's USDC token account address (ATA)
- * @param recipientOwner - Recipient's wallet address (owner of the ATA)
+ * @param treasuryTokenAccount - Treasury's USDC token account address (ATA)
+ * @param treasuryWallet - Treasury wallet address (owner of the ATA)
  * @param usdcMint - USDC mint address
  * @param amount - Amount in smallest units (e.g., 100_000 for 0.1 USDC)
  * @param rpcUrl - Solana RPC URL (optional, defaults to devnet)
@@ -248,8 +233,8 @@ export async function createAndSendTokenTransfer(
   signer: KeyPairSigner<string>,
   payerAddress: string,
   payerTokenAccount: string,
-  recipientTokenAccount: string,
-  recipientOwner: string,
+  treasuryTokenAccount: string,
+  treasuryWallet: string,
   usdcMint: string,
   amount: number,
   rpcUrl: string = 'https://api.devnet.solana.com' // Official Solana devnet RPC
@@ -259,12 +244,11 @@ export async function createAndSendTokenTransfer(
   
   // Parse addresses
   const payerTokenAccountAddress = parseAddress(payerTokenAccount);
-  const recipientAddress = parseAddress(recipientTokenAccount);
+  const treasuryAddress = parseAddress(treasuryTokenAccount);
   const tokenProgramAddress = parseAddress('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
   
-  // Check if recipient ATA exists, create it if not
-  const recipientExists = await tokenAccountExists(rpc, recipientTokenAccount);
-  console.log('[Token Transfer] Recipient ATA exists:', recipientExists);
+  // Check if treasury ATA exists, create it if not
+  const treasuryExists = await tokenAccountExists(rpc, treasuryTokenAccount);
   
   // Get recent blockhash
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
@@ -275,69 +259,31 @@ export async function createAndSendTokenTransfer(
   // Create token transfer instruction
   const transferInstruction = createTokenTransferInstruction(
     payerTokenAccount,
-    recipientTokenAccount,
+    treasuryTokenAccount,
     payerAddress,
     BigInt(amount)
   );
-  
-  console.log('[Token Transfer] Payer address:', payerAddress);
-  console.log('[Token Transfer] Payer token account (source):', payerTokenAccount);
-  console.log('[Token Transfer] Recipient token account (destination):', recipientTokenAccount);
-  console.log('[Token Transfer] Amount:', amount, 'smallest units');
-  console.log('[Token Transfer] Token program:', 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
   
   // Build transaction message following QuickNode guide pattern
   // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
   // where each builder function returns a progressively more specific type that TypeScript can't infer
   let transactionMessage: any = createTransactionMessage({ version: 0 });
   transactionMessage = setTransactionMessageFeePayerSigner(signer, transactionMessage);
-  console.log('[Token Transfer] Fee payer set:', transactionMessage.feePayer?.address);
   transactionMessage = setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, transactionMessage);
   
-  // If recipient ATA doesn't exist, create it first
+  // If treasury ATA doesn't exist, create it first
   // Note: Error 4615050 "Provided owner is not allowed" can occur if ATA already exists
   // We'll try to create it, but if it fails with this specific error, we'll retry without ATA creation
-  let shouldCreateATA = !recipientExists;
+  let shouldCreateATA = !treasuryExists;
   if (shouldCreateATA) {
-    console.log('[Token Transfer] Creating recipient ATA before transfer...');
-    console.log('[Token Transfer] Recipient owner address:', recipientOwner);
-    
-    // Check if owner account exists first
-    try {
-      const ownerAccountInfo = await rpc.getAccountInfo(parseAddress(recipientOwner), { commitment: 'confirmed' }).send();
-      console.log('[Token Transfer] Owner account exists:', !!ownerAccountInfo.value);
-      if (!ownerAccountInfo.value) {
-        console.warn('[Token Transfer] Warning: Owner account does not exist on-chain. ATA creation may fail.');
-      }
-    } catch (err) {
-      console.warn('[Token Transfer] Could not check owner account:', err);
-    }
-    
     // Pass signer directly so @solana/kit can properly match it with the fee payer
     const createATAInstruction = createAssociatedTokenAccountInstruction(
       signer,
-      recipientTokenAccount,
-      recipientOwner,
+      treasuryTokenAccount,
+      treasuryWallet,
       usdcMint
     );
-    console.log('[Token Transfer] ATA instruction program:', createATAInstruction.programAddress);
-    console.log('[Token Transfer] ATA instruction accounts:', createATAInstruction.accounts.map((a, i) => ({
-      index: i,
-      address: a.address,
-      role: a.role,
-      hasSigner: 'signer' in a && !!a.signer,
-    })));
-    console.log('[Token Transfer] Fee payer address:', signer.address);
-    // parseAddress already returns Address type, so it should work
     transactionMessage = appendTransactionMessageInstruction(createATAInstruction, transactionMessage);
-    console.log('[Token Transfer] ATA creation instruction added');
-    console.log('[Token Transfer] Transaction account keys after ATA instruction:', transactionMessage.staticAccountKeys?.length || 'N/A');
-    if (transactionMessage.staticAccountKeys) {
-      console.log('[Token Transfer] Transaction account keys:', transactionMessage.staticAccountKeys.map((k: any, i: number) => ({
-        index: i,
-        address: k.address,
-      })));
-    }
   }
   
   // Add transfer instruction
@@ -349,72 +295,27 @@ export async function createAndSendTokenTransfer(
       programAddress: tokenProgramAddress,
       accounts: [
         { address: payerTokenAccountAddress, role: 1 }, // Source token account (writable)
-        { address: recipientAddress, role: 1 }, // Destination token account (writable)
+        { address: treasuryAddress, role: 1 }, // Destination token account (writable)
         { address: parseAddress(payerAddress), role: 2, signer }, // Owner (readonlySigner)
       ],
       data: transferInstruction.data,
     },
     transactionMessage
   );
-  console.log('[Token Transfer] Instructions count:', transactionMessage.instructions.length);
-  console.log('[Token Transfer] Static account keys count:', transactionMessage.staticAccountKeys?.length || 'N/A');
-  
-  // Debug: Log transaction message structure before signing
-  console.log('[Token Transfer] Transaction message structure before signing:', {
-    hasInstructions: !!transactionMessage.instructions,
-    instructionsCount: transactionMessage.instructions?.length || 0,
-    hasFeePayer: !!transactionMessage.feePayer,
-    feePayerAddress: transactionMessage.feePayer?.address,
-    hasStaticAccountKeys: !!transactionMessage.staticAccountKeys,
-    staticAccountKeysCount: transactionMessage.staticAccountKeys?.length || 0,
-    allKeys: Object.keys(transactionMessage),
-  });
-  
-  // Debug: Log all instructions and their accounts
-  if (transactionMessage.instructions) {
-    console.log('[Token Transfer] All instructions in transaction:');
-    transactionMessage.instructions.forEach((inst: any, idx: number) => {
-      console.log(`[Token Transfer] Instruction ${idx}:`, {
-        programAddress: inst.programAddress,
-        accountsCount: inst.accounts?.length || 0,
-        accounts: inst.accounts?.map((a: any, i: number) => ({
-          index: i,
-          address: typeof a.address === 'string' ? a.address : a.address?.toString(),
-          role: a.role,
-          hasSigner: 'signer' in a && !!a.signer,
-        })) || [],
-        dataLength: inst.data?.length || 0,
-      });
-    });
-  }
   
   // Sign transaction using signTransactionMessageWithSigners
   const signedTransaction = await signTransactionMessageWithSigners(transactionMessage);
-  console.log('[Token Transfer] Transaction signed, has signatures:', !!signedTransaction.signatures);
-  
-  // Log signed transaction structure to debug account keys issue
-  console.log('[Token Transfer] Signed transaction structure:', {
-    keys: Object.keys(signedTransaction),
-    hasLifetimeConstraint: !!(signedTransaction as any).lifetimeConstraint,
-    hasMessageBytes: !!(signedTransaction as any).messageBytes,
-    messageBytesLength: (signedTransaction as any).messageBytes?.length || 0,
-    hasSignatures: !!signedTransaction.signatures,
-    signaturesCount: signedTransaction.signatures ? Object.keys(signedTransaction.signatures).length : 0,
-  });
   
   // Get signature BEFORE sending (so we have it even if confirmation fails)
   const signature = getSignatureFromTransaction(signedTransaction);
-  console.log('[Token Transfer] Transaction signature:', signature);
   
   // Send and confirm transaction using factory pattern
-  console.log('[Token Transfer] Sending transaction...');
   const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
   
   try {
     // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
     // The signed transaction has all required properties but TypeScript can't infer the exact type
     await sendAndConfirmTransaction(signedTransaction as any, { commitment: 'confirmed' });
-    console.log('[Token Transfer] Transaction confirmed!');
     
     // Verify transaction actually succeeded on-chain
     // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
@@ -424,13 +325,10 @@ export async function createAndSendTokenTransfer(
       console.error('[Token Transfer] Transaction confirmed but has error:', txResponse.meta.err);
       throw new Error(`Transaction failed: ${JSON.stringify(txResponse.meta.err)}`);
     }
-    console.log('[Token Transfer] Transaction verified on-chain: SUCCESS');
   } catch (error: any) {
     // Check if error is "Provided owner is not allowed" (4615050) - ATA might already exist
     const errorCode = error?.cause?.context?.__code || error?.context?.cause?.context?.__code;
     if (errorCode === 4615050 && shouldCreateATA) {
-      console.warn('[Token Transfer] ATA creation failed with "Provided owner is not allowed" - retrying without ATA creation (ATA may already exist)');
-      
       // Retry transaction without ATA creation instruction
       // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
       let retryTransactionMessage: any = createTransactionMessage({ version: 0 });
@@ -443,7 +341,7 @@ export async function createAndSendTokenTransfer(
           programAddress: tokenProgramAddress,
           accounts: [
             { address: payerTokenAccountAddress, role: 1 }, // Source token account (writable)
-            { address: recipientAddress, role: 1 }, // Destination token account (writable)
+            { address: treasuryAddress, role: 1 }, // Destination token account (writable)
             { address: parseAddress(payerAddress), role: 2, signer }, // Owner (readonlySigner)
           ],
           data: transferInstruction.data,
@@ -457,7 +355,6 @@ export async function createAndSendTokenTransfer(
       try {
         // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
         await sendAndConfirmTransaction(retrySignedTransaction as any, { commitment: 'confirmed' });
-        console.log('[Token Transfer] Retry transaction confirmed!');
         return retrySignature;
       } catch (retryError: any) {
         console.error('[Token Transfer] Retry also failed:', retryError);
@@ -466,35 +363,30 @@ export async function createAndSendTokenTransfer(
     }
     
     // Transaction might have succeeded but confirmation failed
-    // Log the full error details
-    console.error('[Token Transfer] Full error details:', safeStringify(error, 2));
-    console.error('[Token Transfer] Error message:', error.message);
-    console.error('[Token Transfer] Error name:', error.name);
-    if (error.cause) {
-      console.error('[Token Transfer] Error cause:', safeStringify(error.cause, 2));
-    }
-    
-    // Check if transaction actually exists and succeeded
-    console.warn('[Token Transfer] Confirmation error, but transaction may have succeeded:', error.message);
-    console.warn('[Token Transfer] Signature:', signature, '- Check on explorer if transaction succeeded');
-    
-    // Try to verify the transaction actually succeeded
-    try {
-      // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
-      // NOTE: Type assertion needed due to @solana/kit RPC type limitations
-      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
-      if (txResponse && !txResponse.meta?.err) {
-        console.log('[Token Transfer] Transaction verification: SUCCESS (transaction succeeded despite confirmation error)');
-        return signature;
-      } else {
-        throw error; // Transaction actually failed, re-throw
+    // Try to verify the transaction actually succeeded with retries (RPC indexing delay)
+    let verified = false;
+    for (let retry = 0; retry < 3; retry++) {
+      if (retry > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * retry)); // 1s, 2s delays
       }
-    } catch (verifyError) {
-      // Can't verify, but transaction might still succeed - return signature anyway
-      // The caller can verify later
-      console.warn('[Token Transfer] Could not verify transaction, but signature is:', signature);
-      return signature;
+      
+      try {
+        // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
+        // NOTE: Type assertion needed due to @solana/kit RPC type limitations
+        const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
+        if (txResponse && !txResponse.meta?.err) {
+          // Transaction succeeded despite confirmation error
+          verified = true;
+          return signature;
+        }
+      } catch (verifyError) {
+        // Continue to next retry
+        continue;
+      }
     }
+    
+    // Could not verify transaction after retries - likely failed
+    throw error;
   }
   
   return signature;

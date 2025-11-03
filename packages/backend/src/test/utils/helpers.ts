@@ -2,7 +2,9 @@
  * Shared test utilities for API integration tests
  */
 
-import bs58 from 'bs58';
+import { getPayerKeypair, type TestPayerKeypair } from './payment';
+import { calculatePriceSmallestUnits } from '@threead/shared';
+import { getAssociatedTokenAddress } from '../../utils/ata';
 
 const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
 
@@ -32,40 +34,87 @@ export async function requireWorkerRunning(): Promise<void> {
   }
 }
 
+// Shared payer keypair for all tests (loaded from payer.keypair.json)
+let sharedPayer: TestPayerKeypair | null = null;
+let payerInitialized = false;
+
 /**
- * Generate a mock payment transaction signature for testing
- * This creates a valid base58 signature format but doesn't create an actual transaction
- * TODO: Replace with actual Solana transaction creation using @solana/kit
+ * Get or load the shared payer keypair for tests
+ * This payer is loaded from payer.keypair.json and reused across all test files
  */
-function generateMockPaymentSignature(): string {
-  // Generate 64 random bytes (Solana signature length) and encode as base58
-  const randomBytes = new Uint8Array(64);
-  crypto.getRandomValues(randomBytes);
-  return bs58.encode(randomBytes);
+export async function getPayer(): Promise<TestPayerKeypair> {
+  if (sharedPayer && payerInitialized) {
+    return sharedPayer;
+  }
+
+  // Load payer keypair from file
+  console.log('[Test Helpers] Loading payer keypair from payer.keypair.json...');
+  sharedPayer = await getPayerKeypair();
+  console.log('[Test Helpers] Payer address:', sharedPayer.publicKeyBase58);
+  payerInitialized = true;
+  
+  return sharedPayer;
 }
 
 /**
- * Helper to create an ad with payment transaction
- * TODO: Replace mock signature with actual payment transaction creation
- * For now, tests will need to mock the payment verification or use a devnet transaction
+ * Get treasury token account address (ATA)
+ * Shared helper to avoid duplication across test files
+ */
+async function getTreasuryTokenAccount(): Promise<string> {
+  const treasuryWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
+  const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
+  return await getAssociatedTokenAddress(usdcMint, treasuryWallet);
+}
+
+/**
+ * Helper to create an ad with real payment transaction
+ * Uses shared payer keypair - automatically creates payment transaction
  */
 export async function createAdWithPayment(
   adData: Record<string, unknown>,
   paymentTx?: string
 ): Promise<Response> {
-  // Use provided payment_tx or generate a mock one
-  // In real tests, this should be an actual Solana transaction signature
-  const finalPaymentTx = paymentTx || generateMockPaymentSignature();
+  // If payment_tx is provided, use it (for tests that want to control the payment)
+  if (paymentTx) {
+    return fetch(`${WORKER_URL}/api/ads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payment_tx: paymentTx,
+        ...adData,
+      }),
+    });
+  }
+
+  // Otherwise, create a real payment transaction
+  const payer = await getPayer();
+  const days = (adData.days as number) || 1;
+  const hasImage = !!(adData.media as unknown);
+  
+  // Calculate payment amount
+  const amountSmallestUnits = calculatePriceSmallestUnits(days, hasImage);
+  
+  // Derive treasury ATA
+  const treasuryTokenAccount = await getTreasuryTokenAccount();
+  
+  // Create real payment transaction
+  const realPaymentTx = await payer.createPaymentTransaction(
+    amountSmallestUnits,
+    treasuryTokenAccount
+  );
+  
+  // Wait a moment for transaction to confirm
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
   return fetch(`${WORKER_URL}/api/ads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      payment_tx: finalPaymentTx,
+      payment_tx: realPaymentTx,
       ...adData,
     }),
   });
 }
 
-export { WORKER_URL };
+export { WORKER_URL, getTreasuryTokenAccount };
 

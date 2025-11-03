@@ -7,6 +7,7 @@
 
 import type { CreateAdRequest } from '@threead/shared';
 import type { Env } from '../types/env';
+import { extractResponseText, extractJSONFromResponse } from '../utils/aiResponseParser';
 
 export interface ModerationResult {
   score: number; // 0-10
@@ -202,57 +203,26 @@ async function performAIModeration(
     max_tokens: 200,
   });
 
-  // Parse response - could be string or object
-  let responseText = '';
-  if (typeof response === 'string') {
-    responseText = response;
-  } else if (response && typeof response === 'object') {
-    // Try various response formats
-    if ('response' in response) {
-      responseText = String(response.response);
-    } else if ('content' in response) {
-      responseText = String(response.content);
-    } else if ('text' in response) {
-      responseText = String(response.text);
-    } else if (Array.isArray(response)) {
-      // Some models return array of message objects
-      const lastMessage = response[response.length - 1];
-      if (lastMessage && typeof lastMessage === 'object' && 'content' in lastMessage) {
-        responseText = String(lastMessage.content);
-      }
-    }
-  }
+  // Parse response using shared utility
+  const responseText = extractResponseText(response);
 
   if (!responseText) {
     throw new Error('Empty response from AI moderation');
   }
 
-  // Extract JSON from response (may have markdown code blocks or extra text)
-  let jsonText = responseText.trim();
-  
-  // Remove markdown code blocks if present
-  if (jsonText.startsWith('```')) {
-    const lines = jsonText.split('\n');
-    const startIdx = lines.findIndex(line => line.includes('{'));
-    const endIdx = lines.findIndex((line, idx) => idx > startIdx && line.includes('}'));
-    if (startIdx >= 0 && endIdx >= 0) {
-      jsonText = lines.slice(startIdx, endIdx + 1).join('\n');
-    }
-  }
-
-  // Extract JSON object if surrounded by text
-  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    jsonText = jsonMatch[0];
+  // Extract JSON from response
+  const extractionResult = extractJSONFromResponse(responseText);
+  if (!extractionResult.success || !extractionResult.jsonText) {
+    throw new Error(extractionResult.error || 'Failed to extract JSON from AI response');
   }
 
   // Parse JSON with error handling
   let parsed: { score?: number; reasons?: string[] | null };
   try {
-    parsed = JSON.parse(jsonText);
+    parsed = JSON.parse(extractionResult.jsonText);
   } catch (parseError) {
     console.error('[performAIModeration] Failed to parse AI JSON response:', parseError);
-    console.error('[performAIModeration] JSON text attempted:', jsonText.substring(0, 500));
+    console.error('[performAIModeration] JSON text attempted:', extractionResult.jsonText.substring(0, 500));
     throw new Error(`Invalid JSON from AI moderation: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
   }
   

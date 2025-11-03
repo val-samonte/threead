@@ -17,9 +17,10 @@ export async function initializeDatabase(db: D1Database): Promise<void> {
 
   // Create indexes
   await db.exec('CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_author ON Ads(author)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_location ON Ads(location)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests)');
-        await db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude)');
 
   // Create Impressions table

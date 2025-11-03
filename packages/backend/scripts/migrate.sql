@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS Ads (
 
 -- Index for fast semantic + geo + expiry cleanup
 CREATE INDEX IF NOT EXISTS idx_visible_expiry ON Ads(visible, expiry);
+CREATE INDEX IF NOT EXISTS idx_author ON Ads(author);
 CREATE INDEX IF NOT EXISTS idx_location ON Ads(location);
 CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests);
 CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags);

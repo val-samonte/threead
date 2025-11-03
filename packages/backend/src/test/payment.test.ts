@@ -3,7 +3,7 @@
  * PRIORITY: Test payment verification FIRST before other features
  * 
  * These tests require:
- * 1. Faucet keypair funded with devnet USDC
+ * 1. Payer keypair (payer.keypair.json) - should be pre-funded with devnet SOL and USDC
  * 2. Real Solana payment transactions (not mocks)
  * 3. Treasury token account address configured
  * 
@@ -12,10 +12,9 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { requireWorkerRunning, WORKER_URL } from './utils/helpers';
-import { generatePayerKeypair, type TestPayerKeypair } from './utils/payment';
+import { requireWorkerRunning, WORKER_URL, getTreasuryTokenAccount, getPayer } from './utils/helpers';
+import type { TestPayerKeypair } from './utils/payment';
 import { calculatePriceSmallestUnits } from '@threead/shared';
-import { getAssociatedTokenAddress } from '../utils/ata';
 
 describe('Payment Verification Tests', () => {
   let payer: TestPayerKeypair;
@@ -23,46 +22,25 @@ describe('Payment Verification Tests', () => {
   beforeAll(async () => {
     await requireWorkerRunning();
     
-    // Generate payer keypair and fund it with SOL and USDC from faucet
-    // This is MANDATORY for all tests - all tests need a funded payer
-    console.log('Setting up funded payer for all tests...');
-    payer = await generatePayerKeypair();
-    
-    // Fund with amounts to cover all tests:
-    // - 0.02 SOL for transaction fees
-    // - 1 USDC for payment transactions
-    const usdcAmount = 1_000_000; // 1 USDC in smallest units
-    const solAmount = 20_000_000; // 0.02 SOL (20 million lamports - enough for transaction fees)
-    
-    console.log('Funding payer with SOL and USDC from faucet...');
-    console.log('  SOL amount:', solAmount, 'lamports (0.02 SOL)');
-    console.log('  USDC amount:', usdcAmount, 'smallest units (1 USDC)');
-    
-    const fundingResult = await payer.fundFromFaucet(usdcAmount, solAmount);
-    console.log('SOL funding transaction:', fundingResult.solTx);
-    console.log('USDC funding transaction:', fundingResult.usdcTx);
-    
-    // Wait for transactions to confirm
-    console.log('Waiting for transactions to confirm...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    console.log('Payer funded and ready for all tests');
+    // Load shared payer keypair from payer.keypair.json (reused across all test files)
+    console.log('Loading payer keypair for payment tests...');
+    payer = await getPayer();
+    console.log('Using payer:', payer.publicKeyBase58);
   }, 30000); // 30 second timeout for beforeAll
 
   describe('Payment Transaction Creation', () => {
     it('should create a real USDC payment transaction to treasury', async () => {
-      // Payer is already funded in beforeAll
+      // Payer is loaded from payer.keypair.json in beforeAll
       // Calculate payment amount for 1 day ad
       const amountSmallestUnits = calculatePriceSmallestUnits(1, false);
       
       // Derive treasury ATA from wallet address (from env or test constants)
-      const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
-      const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const treasuryTokenAccount = await getTreasuryTokenAccount();
       
       // Create actual payment transaction
       const paymentTx = await payer.createPaymentTransaction(
         amountSmallestUnits,
-        recipientTokenAccount
+        treasuryTokenAccount
       );
       
       expect(paymentTx).toBeDefined();
@@ -76,18 +54,16 @@ describe('Payment Verification Tests', () => {
 
   describe('Ad Creation with Real Payment', () => {
     it('should create ad with valid payment transaction', async () => {
-      // Payer is already funded in beforeAll
+      // Payer is loaded from payer.keypair.json in beforeAll
       const amountSmallestUnits = calculatePriceSmallestUnits(1, false);
       
       // Derive treasury ATA from wallet address
-      const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
-      const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const treasuryTokenAccount = await getTreasuryTokenAccount();
       
       // Create payment transaction
       const paymentTx = await payer.createPaymentTransaction(
         amountSmallestUnits,
-        recipientTokenAccount
+        treasuryTokenAccount
       );
       
       // Wait for transaction to be indexed by RPC before verification
@@ -152,19 +128,17 @@ describe('Payment Verification Tests', () => {
     });
     
     it('should reject ad with insufficient payment amount', async () => {
-      // Payer is already funded in beforeAll
+      // Payer is loaded from payer.keypair.json in beforeAll
       // Create payment for less than required (insufficient amount)
       const insufficientAmount = 1000; // Too small (less than 0.1 USDC minimum)
       
       // Derive treasury ATA from wallet address
-      const recipientWallet = process.env.RECIPIENT_WALLET || 'Hf1BvFzfGiAzPoV6oHWSxQuNEiGxyULuZh8zU4ZMknFM';
-      const usdcMint = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-      const recipientTokenAccount = await getAssociatedTokenAddress(usdcMint, recipientWallet);
+      const treasuryTokenAccount = await getTreasuryTokenAccount();
       
       // Create payment with insufficient amount (but still a valid transaction)
       const paymentTx = await payer.createPaymentTransaction(
         insufficientAmount,
-        recipientTokenAccount
+        treasuryTokenAccount
       );
       
       const response = await fetch(`${WORKER_URL}/api/ads`, {

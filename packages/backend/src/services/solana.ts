@@ -213,7 +213,8 @@ export async function extractPayerFromTransaction(
   env: Env
 ): Promise<string | null> {
   try {
-    const transactionData = await fetchTransaction(signature, env, { retries: 1, retryDelayMs: 0 });
+    // Use full retry logic (3 retries with exponential backoff) to handle RPC indexing delays
+    const transactionData = await fetchTransaction(signature, env);
 
     // If we got a result, extract payer
     if (transactionData && !transactionData.error && transactionData.result) {
