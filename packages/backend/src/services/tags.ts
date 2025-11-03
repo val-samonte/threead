@@ -91,18 +91,29 @@ ${AVAILABLE_TAGS.map((tag, idx) => `${idx + 1}. ${tag}`).join('\n')}
 
 Always respond with valid JSON only, no markdown formatting. The tags array should contain 2-5 tag strings from the available list.`;
 
+export interface GenerateTagsResult {
+  success: boolean;
+  tags: string[];
+  error?: string;
+  details?: string;
+}
+
 /**
  * Generate tags for an ad using AI
- * Returns an array of tag strings selected from the available tag list
+ * Returns a result object with success status, tags array, and error details if failed
  */
 export async function generateTags(
   adRequest: CreateAdRequest,
   env: Env
-): Promise<string[]> {
+): Promise<GenerateTagsResult> {
   // Verify AI is available
   if (!env.AI) {
-    console.warn('AI tag generation service is not available. Returning empty tags.');
-    return [];
+    return {
+      success: false,
+      tags: [],
+      error: 'AI service not available',
+      details: 'The AI service is not configured in the environment.',
+    };
   }
 
   try {
@@ -140,6 +151,9 @@ export async function generateTags(
       max_tokens: 200,
     });
 
+    // Log raw AI response for debugging
+    console.log('[generateTags] Raw AI response:', JSON.stringify(response, null, 2));
+
     // Parse response - could be string or object
     let responseText = '';
     if (typeof response === 'string') {
@@ -161,55 +175,144 @@ export async function generateTags(
       }
     }
 
-    if (!responseText) {
-      console.warn('Empty response from AI tag generation');
-      return [];
+    // Log extracted response text
+    console.log('[generateTags] Extracted response text:', responseText);
+    console.log('[generateTags] Response text length:', responseText.length);
+
+    if (!responseText || responseText.trim().length === 0) {
+      return {
+        success: false,
+        tags: [],
+        error: 'Empty AI response',
+        details: `The AI service returned an empty response. Response type: ${typeof response}, raw response: ${JSON.stringify(response, null, 2)}`,
+      };
     }
 
     // Extract JSON from response (may have markdown code blocks or extra text)
-    let jsonText = responseText.trim();
+    const originalResponseText = responseText.trim();
+    let jsonText = originalResponseText;
+    let hadMarkdown = false;
 
     // Remove markdown code blocks if present
     if (jsonText.startsWith('```')) {
+      hadMarkdown = true;
       const lines = jsonText.split('\n');
       const startIdx = lines.findIndex(line => line.includes('{'));
       const endIdx = lines.findIndex((line, idx) => idx > startIdx && line.includes('}'));
       if (startIdx >= 0 && endIdx >= 0) {
         jsonText = lines.slice(startIdx, endIdx + 1).join('\n');
+      } else {
+        return {
+          success: false,
+          tags: [],
+          error: 'Markdown code block found but no JSON object detected',
+          details: `Response contained markdown code blocks but could not extract JSON. Full response: ${originalResponseText}`,
+        };
       }
     }
 
     // Extract JSON object if surrounded by text
+    // Try multiple strategies to find JSON
+    let extractedJson = jsonText;
+    
+    // Strategy 1: Try regex match for complete JSON object
     const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      jsonText = jsonMatch[0];
+      extractedJson = jsonMatch[0];
+    } else {
+      // Strategy 2: Find opening brace and try to extract everything from there
+      const openingBraceIdx = jsonText.indexOf('{');
+      if (openingBraceIdx >= 0) {
+        // Try to find closing brace
+        const closingBraceIdx = jsonText.lastIndexOf('}');
+        if (closingBraceIdx > openingBraceIdx) {
+          extractedJson = jsonText.substring(openingBraceIdx, closingBraceIdx + 1);
+        } else {
+          // No closing brace found - try to extract from opening brace to end and see if we can parse it
+          // This handles cases where response is truncated
+          extractedJson = jsonText.substring(openingBraceIdx);
+          // Try to fix incomplete JSON by adding closing brace if it looks like it's missing
+          const openBraces = (extractedJson.match(/\{/g) || []).length;
+          const closeBraces = (extractedJson.match(/\}/g) || []).length;
+          if (openBraces > closeBraces) {
+            extractedJson += '}'.repeat(openBraces - closeBraces);
+          }
+        }
+      } else {
+        return {
+          success: false,
+          tags: [],
+          error: 'No JSON object found in response',
+          details: `Could not find a JSON object (no opening brace '{') in the AI response. Full response: ${originalResponseText}. Full response length: ${originalResponseText.length} chars${hadMarkdown ? ' (markdown code blocks were removed)' : ''}`,
+        };
+      }
+    }
+    
+    jsonText = extractedJson;
+
+    // Parse JSON with error handling
+    let parsed: { tags?: unknown[] };
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (parseError) {
+      const parseErrorMsg = parseError instanceof Error ? parseError.message : String(parseError);
+      return {
+        success: false,
+        tags: [],
+        error: 'Failed to parse JSON response',
+        details: `JSON parsing failed: ${parseErrorMsg}. Extracted JSON text: ${jsonText}. Original full response: ${originalResponseText}`,
+      };
     }
 
-    // Parse JSON
-    const parsed = JSON.parse(jsonText);
+    if (!parsed || typeof parsed !== 'object') {
+      return {
+        success: false,
+        tags: [],
+        error: 'Invalid parsed JSON structure',
+        details: `Parsed JSON is not an object. Parsed value: ${JSON.stringify(parsed)}. Original full response: ${originalResponseText}`,
+      };
+    }
 
-    if (!parsed || !Array.isArray(parsed.tags)) {
-      console.warn('Invalid AI response format for tag generation');
-      return [];
+    if (!Array.isArray(parsed.tags)) {
+      return {
+        success: false,
+        tags: [],
+        error: 'Tags array missing or invalid',
+        details: `Expected "tags" property to be an array, but got: ${typeof parsed.tags}. Parsed object: ${JSON.stringify(parsed)}. Original full response: ${originalResponseText}`,
+      };
     }
 
     // Validate tags are strings and filter to only include valid tags from our list
-    const validTags = parsed.tags
-      .filter((tag: unknown): tag is string => typeof tag === 'string')
+    const stringTags = parsed.tags.filter((tag: unknown): tag is string => typeof tag === 'string');
+    const validTags = stringTags
       .filter((tag: string) => AVAILABLE_TAGS.includes(tag as AvailableTag))
       .slice(0, 5); // Limit to 5 tags max
 
     if (validTags.length === 0) {
-      console.warn('No valid tags generated from AI response');
-      return [];
+      const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as AvailableTag));
+      return {
+        success: false,
+        tags: [],
+        error: 'No valid tags found',
+        details: `Parsed ${parsed.tags.length} tags, but none matched the available tag list. Invalid tags: ${invalidTags.join(', ')}. Available tags: ${AVAILABLE_TAGS.slice(0, 10).join(', ')}...`,
+      };
     }
 
-    return validTags;
+    // Success - return valid tags
+    return {
+      success: true,
+      tags: validTags,
+    };
   } catch (error) {
-    // Log error but don't throw - tag generation is non-blocking
+    // Unexpected error during tag generation
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to generate tags:`, errorMsg);
-    return [];
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    return {
+      success: false,
+      tags: [],
+      error: 'Unexpected error during tag generation',
+      details: `Error: ${errorMsg}${errorStack ? `. Stack: ${errorStack.substring(0, 300)}` : ''}`,
+    };
   }
 }
 

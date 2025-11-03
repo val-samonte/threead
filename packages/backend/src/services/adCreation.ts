@@ -14,26 +14,28 @@ export interface CreateAdResult {
   success: boolean;
   ad?: Ad;
   error?: string;
+  details?: string;
 }
 
 /**
  * Create a new ad (shared implementation for REST API and MCP)
+ * This creates the ad WITHOUT payment verification (payment verification happens after)
  * @param adRequest - The ad creation request (user-provided data)
  * @param author - The Solana address of the ad creator (extracted from payment transaction)
  * @param env - Environment with database and services
- * @param paymentTx - Optional payment transaction signature (defaults to adRequest.payment_tx)
+ * @param paymentTx - Payment transaction signature (from adRequest.payment_tx)
  */
 export async function createAdService(
   adRequest: CreateAdRequest,
   author: string,
   env: Env,
-  paymentTx?: string
+  paymentTx: string
 ): Promise<CreateAdResult> {
   try {
     // Generate ad ID
     const adId = crypto.randomUUID();
-    // Use provided payment_tx (either from x402 payment or dev-bypass)
-    const finalPaymentTx = paymentTx || (adRequest.payment_tx || `dev-bypass-${adId}`);
+    // Use provided payment_tx (required for rollback tracking)
+    const finalPaymentTx = paymentTx;
 
     // TODO: Upload media to R2 if provided
     let mediaKey: string | undefined;
@@ -47,13 +49,31 @@ export async function createAdService(
     }
 
     // Run moderation with AI (if available)
-    const moderation = await moderateAd(adRequest, env);
+    // If moderation fails, default to visible with score 10 (fail open)
+    let moderation;
+    try {
+      moderation = await moderateAd(adRequest, env);
+    } catch (error) {
+      console.error('Failed to moderate ad:', error);
+      // Fail open - default to visible with score 10 if moderation fails
+      moderation = {
+        score: 10,
+        visible: true,
+      };
+    }
 
-    // Generate tags with AI (non-blocking - continue if it fails)
-    const tags = await generateTags(adRequest, env).catch(err => {
-      console.error('Failed to generate tags:', err);
-      return [] as string[];
-    });
+    // Generate tags with AI - MANDATORY: fail if tag generation fails
+    const tagResult = await generateTags(adRequest, env);
+    
+    if (!tagResult.success || !tagResult.tags || tagResult.tags.length === 0) {
+      return {
+        success: false,
+        error: tagResult.error || 'Failed to generate tags. Tag generation is required for ad creation.',
+        details: tagResult.details,
+      };
+    }
+
+    const tags = tagResult.tags;
 
     // Create ad record
     const now = new Date();
@@ -74,8 +94,8 @@ export async function createAdService(
       max_age: adRequest.max_age,
       location: adRequest.location,
       interests: adRequest.interests?.join(','),
-      tags: tags.length > 0 ? tags : undefined,
-      payment_tx: finalPaymentTx,
+      tags: tags, // Tags are mandatory, so always include them as array
+      payment_tx: paymentTx,
       media_key: mediaKey,
       created_at: now.toISOString(),
       moderation_score: moderation.score,

@@ -17,10 +17,7 @@ import type { Env } from '../types/env';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { queryAdsTool } from './tools/queryAds';
 import { getAdDetailsTool } from './tools/getAdDetails';
-import { createAdService } from '../services/adCreation';
-import { extractPayerFromTransaction, verifyPayment } from '../services/solana';
-import { calculateAdPricing } from '../services/pricing';
-import { getAssociatedTokenAddress } from '../utils/ata';
+import { createAdWithPayment } from '../services/createAdWithPayment';
 import type { CreateAdRequest, AdQueryParams } from '@threead/shared';
 import { z } from 'zod';
 
@@ -70,67 +67,9 @@ function getMCPServer(env: Env): McpServer {
       // We use 'any' for args parameter because SDK type inference is broken by 'as any' on schema
       // VALIDATION IS PRESERVED: MCP SDK validates with zod before handler is called
       (async (args: any) => {
-        // Extract author (payer) from payment transaction
-        const extractedPayer = await extractPayerFromTransaction(args.payment_tx, env);
+        // Execute shared ad creation flow with payment verification
+        const result = await createAdWithPayment(args as CreateAdRequest, env);
         
-        if (!extractedPayer) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: 'Failed to extract payer from payment transaction',
-                  details: 'The payment transaction signature may be invalid or the transaction not found',
-                }),
-              },
-            ],
-          };
-        }
-
-        // Verify payment amount and recipient
-        const expectedAmount = calculateAdPricing(args.days, !!args.media);
-        // Derive ATA from treasury wallet address
-        const recipientTokenAccount = await getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
-        const paymentVerification = await verifyPayment(
-          args.payment_tx,
-          expectedAmount.priceSmallestUnits,
-          recipientTokenAccount,
-          env
-        );
-
-        if (!paymentVerification.valid || !paymentVerification.payer) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: 'Payment verification failed',
-                  details: paymentVerification.error || 'Could not verify payment transaction',
-                }),
-              },
-            ],
-          };
-        }
-
-        // Ensure extracted payer matches payment verification payer
-        if (paymentVerification.payer !== extractedPayer) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: 'Payer mismatch between transaction extraction and verification',
-                }),
-              },
-            ],
-          };
-        }
-
-        // Directly call createAdService since it already handles all logic and error formatting
-        const result = await createAdService(args as CreateAdRequest, extractedPayer, env, args.payment_tx);
         return {
           content: [
             {

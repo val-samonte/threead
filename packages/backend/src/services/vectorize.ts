@@ -121,10 +121,7 @@ export async function indexAd(env: Env, ad: Ad): Promise<void> {
       },
     ]);
     
-    // Log success - upsert completion means the vector is indexed
-    // Note: getByIds may have eventual consistency in remote Vectorize, so we don't verify via getByIds
-    // Indexing is verified by successful upsert (no exception thrown)
-    console.log(`Successfully indexed ad ${ad.ad_id} in Vectorize. Embedding dims: ${embedding.length}`);
+    // Successfully indexed - no logging needed for successful operations
   } catch (error) {
     // Log full error details for debugging
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -190,16 +187,6 @@ export async function semanticSearch(
       returnValues: false,
     });
     
-    // Log query results for debugging
-    const matchCount = queryResult.matches?.length || 0;
-    console.log(`Vectorize query returned ${matchCount} matches${Object.keys(vectorizeFilter).length > 0 ? ` (filter: ${JSON.stringify(vectorizeFilter)})` : ''}`);
-    
-    // Debug: Log first few match IDs if debugging is needed
-    if (matchCount > 0 && queryResult.matches) {
-      const firstFewIds = queryResult.matches.slice(0, 5).map(m => m.id).join(', ');
-      console.log(`First 5 Vectorize match IDs: ${firstFewIds}${matchCount > 5 ? '...' : ''}`);
-    }
-
     // Filter results by additional criteria (age, geo, interests)
     // Note: visible filtering is now handled by Vectorize metadata filters (more efficient)
     let results = queryResult.matches || [];

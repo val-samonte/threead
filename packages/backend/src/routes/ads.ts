@@ -5,12 +5,9 @@
 import type { Env } from '../types/env';
 import type { CreateAdRequest, Ad, AdQueryParams, AdSearchResult } from '@threead/shared';
 import { validateAdRequest } from '@threead/shared';
-import { createAdService } from '../services/adCreation';
+import { createAdWithPayment } from '../services/createAdWithPayment';
 import * as dbService from '../services/db';
 import { semanticSearch } from '../services/vectorize';
-import { extractPayerFromTransaction, verifyPayment } from '../services/solana';
-import { calculateAdPricing } from '../services/pricing';
-import { getAssociatedTokenAddress } from '../utils/ata';
 
 export async function handleAdsRoute(
   request: Request,
@@ -51,84 +48,71 @@ export async function handleAdsRoute(
 async function createAd(request: Request, env: Env): Promise<Response> {
   try {
     // Parse request body
-    const body: CreateAdRequest = await request.json();
+    let body: CreateAdRequest;
+    try {
+      const bodyText = await request.text();
+      body = JSON.parse(bodyText);
+    } catch (jsonError) {
+      console.error('[createAd] JSON parse error:', jsonError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          details: jsonError instanceof Error ? jsonError.message : 'Failed to parse JSON'
+        }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
 
     // Validate request
     const validation = validateAdRequest(body);
     if (!validation.valid) {
-      return new Response(
-        JSON.stringify({ error: 'Validation failed', errors: validation.errors }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      console.error('[createAd] Validation failed:', validation.errors);
+      try {
+        const errorResponse = JSON.stringify({ error: 'Validation failed', errors: validation.errors });
+        return new Response(
+          errorResponse,
+          { 
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      } catch (stringifyError) {
+        console.error('[createAd] Failed to stringify validation errors:', stringifyError);
+        return new Response(
+          JSON.stringify({ error: 'Validation failed', errors: ['Failed to serialize validation errors'] }),
+          { 
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
     }
 
-    // Extract author (payer) from payment transaction
-    // The payment transaction signature proves the payer's identity
-    const extractedPayer = await extractPayerFromTransaction(body.payment_tx, env);
-    
-    if (!extractedPayer) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to extract payer from payment transaction',
-          details: 'The payment transaction signature may be invalid or the transaction not found'
-        }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // Verify payment amount and recipient
-    const expectedAmount = calculateAdPricing(body.days, !!body.media);
-    // Derive ATA from treasury wallet address
-    const recipientTokenAccount = await getAssociatedTokenAddress(env.USDC_MINT, env.RECIPIENT_WALLET);
-    const paymentVerification = await verifyPayment(
-      body.payment_tx,
-      expectedAmount.priceSmallestUnits,
-      recipientTokenAccount,
-      env
-    );
-
-    if (!paymentVerification.valid || !paymentVerification.payer) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Payment verification failed',
-          details: paymentVerification.error || 'Could not verify payment transaction'
-        }),
-        { 
-          status: 402, // Payment Required
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // Ensure extracted payer matches payment verification payer
-    if (paymentVerification.payer !== extractedPayer) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Payer mismatch between transaction extraction and verification'
-        }),
-        { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // Create ad using shared service
-    const result = await createAdService(body, extractedPayer, env, body.payment_tx);
+    // Execute shared ad creation flow with payment verification
+    const result = await createAdWithPayment(body, env);
 
     if (!result.success) {
+      // Determine appropriate status code based on error type
+      let status = 400; // Default to Bad Request
+      
+      if (result.error === 'Insufficient USDC balance' || 
+          result.error?.includes('Payment verification failed') ||
+          result.error?.includes('Payment amount mismatch')) {
+        status = 402; // Payment Required
+      } else if (result.error?.includes('extract')) {
+        status = 400; // Bad Request - extraction errors
+      }
+
       return new Response(
         JSON.stringify({ 
-          error: result.error || 'Failed to create ad'
+          error: result.error || 'Failed to create ad',
+          details: result.details
         }),
         { 
-          status: 400,
+          status,
           headers: { 'Content-Type': 'application/json' }
         }
       );

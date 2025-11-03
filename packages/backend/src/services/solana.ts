@@ -5,6 +5,190 @@
 
 import type { Env } from '../types/env';
 import { smallestUnitsToUSDC } from '@threead/shared';
+import { createSolanaRpc } from '@solana/rpc';
+import { address as parseAddress } from '@solana/kit';
+import { getAssociatedTokenAddress } from '../utils/ata';
+
+/**
+ * Token balance change from transaction metadata
+ */
+interface TokenBalanceChange {
+  accountIndex: number;
+  mint?: string;
+  owner?: string;
+  uiTokenAmount?: {
+    amount: string;
+    decimals: number;
+    uiAmount: number | null;
+    uiAmountString: string;
+  };
+}
+
+/**
+ * Transaction response type from Solana RPC
+ */
+type TransactionResponse = {
+  error?: { message?: string }; 
+  result?: {
+    transaction?: {
+      message?: {
+        accountKeys?: Array<{ pubkey?: string } | string>;
+      };
+    };
+    meta?: {
+      err?: unknown;
+      fee?: number;
+      postTokenBalances?: TokenBalanceChange[];
+      preTokenBalances?: TokenBalanceChange[];
+    };
+    slot?: number;
+  };
+} | null;
+
+/**
+ * Extract account key from transaction accountKeys array
+ * Handles both formats: string or object with pubkey property
+ */
+function extractAccountKey(accountKey: string | { pubkey?: string } | undefined): string | undefined {
+  if (typeof accountKey === 'string') {
+    return accountKey;
+  }
+  if (accountKey && typeof accountKey === 'object' && 'pubkey' in accountKey) {
+    return accountKey.pubkey;
+  }
+  return undefined;
+}
+
+/**
+ * Get USDC balance from a payer's Associated Token Account (ATA)
+ * @param payerAddress - Payer's wallet address (base58)
+ * @param usdcMint - USDC mint address
+ * @param env - Environment with RPC URL
+ * @returns Balance in smallest units (e.g., 1000000 = 1 USDC)
+ */
+export async function getPayerUSDCBalance(
+  payerAddress: string,
+  usdcMint: string,
+  env: Env
+): Promise<number> {
+  try {
+    const rpc = createSolanaRpc(env.SOLANA_RPC_URL);
+    
+    // Derive payer's ATA
+    const payerATA = await getAssociatedTokenAddress(usdcMint, payerAddress);
+    
+    // Get token account info
+    const accountInfo = await rpc.getAccountInfo(parseAddress(payerATA), {
+      commitment: 'confirmed',
+      encoding: 'jsonParsed',
+    }).send();
+    
+    if (!accountInfo.value) {
+      // ATA doesn't exist = 0 balance
+      return 0;
+    }
+    
+    // Parse token account data
+    const parsed = accountInfo.value.data;
+    if (typeof parsed === 'object' && parsed !== null && 'parsed' in parsed) {
+      const parsedData = parsed.parsed as { info?: { tokenAmount?: { amount?: string } } };
+      if (parsedData?.info?.tokenAmount?.amount) {
+        return Number(parsedData.info.tokenAmount.amount);
+      }
+    }
+    
+    // Fallback: try to decode raw data if parsed format is not available
+    // Token account structure: mint (32 bytes) + owner (32 bytes) + amount (8 bytes) + ...
+    if (typeof parsed === 'object' && parsed !== null && 'data' in parsed) {
+      const rawData = parsed.data as string[];
+      if (Array.isArray(rawData) && rawData.length > 0) {
+        // For base64 encoded data, we'd need to decode it
+        // But jsonParsed should always give us the parsed format
+        return 0;
+      }
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('[getPayerUSDCBalance] Error getting balance:', error);
+    // Return 0 on error to be safe (will fail balance check)
+    return 0;
+  }
+}
+
+/**
+ * Fetch transaction from Solana RPC with retry logic
+ * Transactions may not be immediately queryable after confirmation (RPC indexing delay)
+ */
+async function fetchTransaction(
+  signature: string,
+  env: Env,
+  options: { retries?: number; retryDelayMs?: number } = {}
+): Promise<TransactionResponse> {
+  const maxRetries = options.retries ?? 3;
+  const baseDelayMs = options.retryDelayMs ?? 1000;
+  
+  for (let retry = 0; retry < maxRetries; retry++) {
+    // Add delay on retries (exponential backoff)
+    if (retry > 0) {
+      const delayMs = Math.min(baseDelayMs * Math.pow(2, retry - 1), 5000); // Max 5s
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    
+    const response = await fetch(`${env.SOLANA_RPC_URL}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTransaction',
+        params: [
+          signature,
+          {
+            encoding: 'jsonParsed',
+            maxSupportedTransactionVersion: 1,
+            commitment: 'confirmed',
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[fetchTransaction] HTTP error ${response.status}, retry ${retry}`);
+      continue;
+    }
+
+    let data: TransactionResponse = null;
+    try {
+      const responseText = await response.text();
+      try {
+        data = JSON.parse(responseText) as TransactionResponse;
+      } catch (parseError) {
+        console.error(`[fetchTransaction] Failed to parse JSON response, retry ${retry}:`, parseError);
+        console.error(`[fetchTransaction] Response text (first 500 chars):`, responseText.substring(0, 500));
+        continue;
+      }
+    } catch (textError) {
+      console.error(`[fetchTransaction] Failed to read response text, retry ${retry}:`, textError);
+      continue;
+    }
+    
+    // If we got a result, return it
+    if (data && !data.error && data.result) {
+      return data;
+    }
+    
+    // If we got an error or no result, continue to next retry
+    if (!data || data.error || !data.result) {
+      continue;
+    }
+  }
+
+  // All retries failed
+  return null;
+}
 
 export interface VerificationResult {
   valid: boolean;
@@ -29,188 +213,33 @@ export async function extractPayerFromTransaction(
   env: Env
 ): Promise<string | null> {
   try {
-    // Try with versioned transaction support (version 1+)
-    // @solana/kit creates versioned transactions, but curl test shows version 0 works
-    const versionsToTry = [0, 1]; // Try legacy first, then versioned
-    
-    for (const maxVersion of versionsToTry) {
-      const response = await fetch(`${env.SOLANA_RPC_URL}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getTransaction',
-          params: [
-            signature,
-            {
-              encoding: 'jsonParsed',
-              maxSupportedTransactionVersion: maxVersion,
-              commitment: 'confirmed',
-            },
-          ],
-        }),
-      });
+    const transactionData = await fetchTransaction(signature, env, { retries: 1, retryDelayMs: 0 });
 
-      if (!response.ok) {
-        console.error(`[extractPayerFromTransaction] HTTP error ${response.status} for version ${maxVersion}`);
-        continue;
-      }
-
-      const responseText = await response.text();
-      let responseData: any;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error(`[extractPayerFromTransaction] Failed to parse JSON for version ${maxVersion}:`, parseError);
-        console.error(`[extractPayerFromTransaction] Response text:`, responseText.substring(0, 500));
-        continue;
-      }
-      
-      const data = responseData as { 
-        error?: { code?: number; message?: string }; 
-        result?: {
-          transaction?: {
-            message?: {
-              accountKeys?: Array<{ pubkey?: string } | string>;
-            };
-          };
-          meta?: {
-            fee?: number;
-            err?: unknown;
-          };
-        } | null;
-      };
-
-      // Log detailed response for debugging
-      if (data.error || !data.result || data.result === null) {
-        console.error(`[extractPayerFromTransaction] Version ${maxVersion} failed:`, {
-          version: maxVersion,
-          error: data.error,
-          hasResult: !!data.result,
-          resultIsNull: data.result === null,
-          resultKeys: data.result ? Object.keys(data.result) : [],
-          signature: signature.substring(0, 16) + '...',
-        });
-      } else {
-        console.log(`[extractPayerFromTransaction] Version ${maxVersion} success, has transaction:`, !!data.result?.transaction);
-      }
-
-      // If we got a result, use it
-      if (!data.error && data.result) {
-        // Extract payer from this result
-        const accountKeys = data.result.transaction?.message?.accountKeys;
-        if (accountKeys && accountKeys.length > 0) {
-          // Handle both formats: array of strings OR array of objects with pubkey
-          let payerPubkey: string | undefined;
-          const firstAccount = accountKeys[0];
-          
-          if (typeof firstAccount === 'string') {
-            payerPubkey = firstAccount;
-          } else if (firstAccount && typeof firstAccount === 'object' && 'pubkey' in firstAccount) {
-            payerPubkey = firstAccount.pubkey;
-          }
-
-          if (payerPubkey && typeof payerPubkey === 'string') {
-            console.log(`[extractPayerFromTransaction] Successfully extracted payer with version ${maxVersion}:`, payerPubkey);
-            return payerPubkey;
-          }
-        }
-      }
-      
-      // If we got an error or no result, try next version
-      if (data.error || !data.result) {
-        continue;
-      }
-    }
-    
-    // If we tried all versions and still no result, try one more time with a longer delay
-    console.log('[extractPayerFromTransaction] Retrying after longer delay...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Final attempt with version 1 (versioned transactions)
-    const finalResponse = await fetch(`${env.SOLANA_RPC_URL}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getTransaction',
-        params: [
-          signature,
-          {
-            encoding: 'jsonParsed',
-            maxSupportedTransactionVersion: 1,
-            commitment: 'confirmed',
-          },
-        ],
-      }),
-    });
-
-    const finalData = await finalResponse.json() as { 
-      error?: { code?: number; message?: string }; 
-      result?: {
-        transaction?: {
-          message?: {
-            accountKeys?: Array<{ pubkey?: string } | string>;
-          };
-        };
-        meta?: {
-          fee?: number;
-          err?: unknown;
-        };
-      };
-    };
-
-    if (!finalData.error && finalData.result) {
-      const accountKeys = finalData.result.transaction?.message?.accountKeys;
+    // If we got a result, extract payer
+    if (transactionData && !transactionData.error && transactionData.result) {
+      const accountKeys = transactionData.result.transaction?.message?.accountKeys;
       if (accountKeys && accountKeys.length > 0) {
-        let payerPubkey: string | undefined;
         const firstAccount = accountKeys[0];
-        
-        if (typeof firstAccount === 'string') {
-          payerPubkey = firstAccount;
-        } else if (firstAccount && typeof firstAccount === 'object' && 'pubkey' in firstAccount) {
-          payerPubkey = firstAccount.pubkey;
-        }
+        const payerPubkey = extractAccountKey(firstAccount);
 
         if (payerPubkey && typeof payerPubkey === 'string') {
-          console.log('[extractPayerFromTransaction] Successfully extracted payer after retry');
           return payerPubkey;
         }
       }
     }
     
-    // If we tried all versions and still no result
-    console.error('[extractPayerFromTransaction] RPC error or no result after trying all versions and retries:', {
+    // If no result or error
+    console.error('[extractPayerFromTransaction] RPC error or no result:', {
       signature: signature.substring(0, 16) + '...',
-      finalError: finalData.error,
-      finalHasResult: !!finalData.result,
+      error: transactionData?.error,
+      hasResult: !!transactionData?.result,
+      resultIsNull: transactionData?.result === null,
     });
     return null;
   } catch (error) {
     console.error('Failed to extract payer from transaction:', error);
     return null;
   }
-}
-
-/**
- * Token balance change from transaction metadata
- */
-interface TokenBalanceChange {
-  accountIndex: number;
-  mint?: string;
-  owner?: string;
-  uiTokenAmount?: {
-    amount: string;
-    decimals: number;
-    uiAmount: number | null;
-    uiAmountString: string;
-  };
 }
 
 /**
@@ -229,80 +258,7 @@ export async function verifyPayment(
     
     // Fetch transaction from Solana RPC with retry logic
     // Transactions may not be immediately queryable after confirmation (RPC indexing delay)
-    const versionsToTry = [0, 1]; // Try legacy first, then versioned
-    let transactionData: {
-      error?: { message?: string }; 
-      result?: {
-        transaction?: {
-          message?: {
-            accountKeys?: Array<{ pubkey?: string } | string>;
-          };
-        };
-        meta?: {
-          err?: unknown;
-          fee?: number;
-          postTokenBalances?: TokenBalanceChange[];
-          preTokenBalances?: TokenBalanceChange[];
-        };
-        slot?: number;
-      };
-    } | null = null;
-    
-    // Retry up to 3 times with increasing delays
-    const maxRetries = 3;
-    for (let retry = 0; retry < maxRetries; retry++) {
-      // Add delay on retries (exponential backoff)
-      if (retry > 0) {
-        const delayMs = Math.min(1000 * Math.pow(2, retry - 1), 5000); // 1s, 2s, 4s max
-        console.log(`[verifyPayment] Retry ${retry}/${maxRetries - 1} after ${delayMs}ms delay...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-      
-      for (const maxVersion of versionsToTry) {
-        const response = await fetch(`${env.SOLANA_RPC_URL}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getTransaction',
-            params: [
-              signature,
-              {
-                encoding: 'jsonParsed',
-                maxSupportedTransactionVersion: maxVersion,
-                commitment: 'confirmed',
-              },
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          console.error(`[verifyPayment] HTTP error ${response.status} for version ${maxVersion}, retry ${retry}`);
-          continue;
-        }
-
-        const data = await response.json() as typeof transactionData;
-        
-        // If we got a result, use it
-        if (!data.error && data.result) {
-          transactionData = data;
-          break;
-        }
-        
-        // If we got an error or no result, try next version
-        if (data.error || !data.result) {
-          continue;
-        }
-      }
-      
-      // If we found a transaction, break out of retry loop
-      if (transactionData && transactionData.result) {
-        break;
-      }
-    }
+    const transactionData = await fetchTransaction(signature, env, { retries: 3, retryDelayMs: 1000 });
 
     if (!transactionData || transactionData.error || !transactionData.result) {
       return {
@@ -317,6 +273,19 @@ export async function verifyPayment(
     }
     
     const data = transactionData;
+    
+    // At this point, we know data.result exists
+    if (!data.result) {
+      return {
+        valid: false,
+        amount: 0,
+        amountUSDC: 0,
+        signature,
+        recipient: recipientTokenAccount,
+        payer: payer || undefined,
+        error: 'Transaction result is null',
+      };
+    }
 
     // Check transaction was successful
     if (data.result.meta?.err) {
@@ -361,19 +330,13 @@ export async function verifyPayment(
 
       // Handle both formats: array of strings OR array of objects with pubkey
       const accountKey = accountKeys[postBalance.accountIndex];
-      let tokenAccountPubkey: string | undefined;
-      
-      if (typeof accountKey === 'string') {
-        tokenAccountPubkey = accountKey;
-      } else if (accountKey && typeof accountKey === 'object' && 'pubkey' in accountKey) {
-        tokenAccountPubkey = accountKey.pubkey;
-      }
+      const tokenAccountPubkey = extractAccountKey(accountKey);
       
       if (tokenAccountPubkey === recipientTokenAccount) {
         recipientBalanceChange = postBalance;
         
         // Find corresponding pre-balance
-        const preBalance = preBalances.find(b => b.accountIndex === postBalance.accountIndex);
+        const preBalance = preBalances.find((b: TokenBalanceChange) => b.accountIndex === postBalance.accountIndex);
         
         const preAmount = preBalance?.uiTokenAmount?.amount
           ? BigInt(preBalance.uiTokenAmount.amount)
@@ -435,5 +398,62 @@ export async function verifyPayment(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+}
+
+/**
+ * Verify payment and extract payer in one call
+ * This is a convenience function that combines extractPayerFromTransaction and verifyPayment
+ * Used by both REST API and MCP handlers to avoid code duplication
+ */
+export async function verifyPaymentAndExtractPayer(
+  signature: string,
+  expectedAmountSmallestUnits: number,
+  recipientTokenAccount: string,
+  env: Env
+): Promise<{
+  valid: boolean;
+  payer: string | null;
+  error?: string;
+}> {
+  // Extract payer first
+  const payer = await extractPayerFromTransaction(signature, env);
+  
+  if (!payer) {
+    return {
+      valid: false,
+      payer: null,
+      error: 'Failed to extract payer from payment transaction',
+    };
+  }
+
+  // Verify payment
+  const verification = await verifyPayment(
+    signature,
+    expectedAmountSmallestUnits,
+    recipientTokenAccount,
+    env
+  );
+
+  if (!verification.valid || !verification.payer) {
+    return {
+      valid: false,
+      payer: null,
+      error: verification.error || 'Payment verification failed',
+    };
+  }
+
+  // Ensure extracted payer matches payment verification payer
+  if (verification.payer !== payer) {
+    return {
+      valid: false,
+      payer: null,
+      error: 'Payer mismatch between transaction extraction and verification',
+    };
+  }
+
+  return {
+    valid: true,
+    payer,
+  };
 }
 

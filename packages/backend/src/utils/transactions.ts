@@ -18,6 +18,11 @@ import {
 import { sendAndConfirmTransactionFactory } from '@solana/kit';
 import { getTransferSolInstruction } from '@solana-program/system';
 
+// SPL Token Program IDs (constants)
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const ASSOCIATED_TOKEN_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+
 /**
  * Safe JSON stringify that handles BigInt values
  * Converts BigInt to string representation
@@ -40,8 +45,6 @@ export function createTokenTransferInstruction(
   owner: string,
   amount: bigint
 ): { programId: string; keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>; data: Uint8Array } {
-  // SPL Token Program ID
-  const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
   
   // Instruction data:
   // Instruction discriminator: 3 (Transfer)
@@ -64,6 +67,7 @@ export function createTokenTransferInstruction(
     data: instructionData,
   };
 }
+
 /**
  * Transfer native SOL from one account to another
  * 
@@ -112,6 +116,8 @@ export async function createAndSendSolTransfer(
   console.log('[SOL Transfer] Instruction program:', transferInstruction.programAddress);
   
   // Build transaction message following QuickNode guide pattern exactly
+  // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
+  // where each builder function returns a progressively more specific type that TypeScript can't infer
   let transactionMessage: any = createTransactionMessage({ version: 0 });
   transactionMessage = setTransactionMessageFeePayerSigner(signer, transactionMessage);
   console.log('[SOL Transfer] Fee payer set:', transactionMessage.feePayer?.address);
@@ -133,6 +139,8 @@ export async function createAndSendSolTransfer(
   const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
   
   try {
+    // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
+    // The signed transaction has all required properties but TypeScript can't infer the exact type
     await sendAndConfirmTransaction(signedTransaction as any, { commitment: 'confirmed' });
     console.log('[SOL Transfer] Transaction confirmed!');
   } catch (error: any) {
@@ -143,7 +151,9 @@ export async function createAndSendSolTransfer(
     
     // Try to verify the transaction actually succeeded
     try {
-      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).send();
+      // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
+      // NOTE: Type assertion needed due to @solana/kit RPC type limitations
+      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
       if (txResponse && !txResponse.meta?.err) {
         console.log('[SOL Transfer] Transaction verification: SUCCESS (transaction succeeded despite confirmation error)');
         return signature;
@@ -172,10 +182,6 @@ function createAssociatedTokenAccountInstruction(
   owner: string,
   mint: string
 ): { programAddress: ReturnType<typeof parseAddress>; accounts: Array<{ address: ReturnType<typeof parseAddress>; role: number; signer?: KeyPairSigner<string> }>; data: Uint8Array } {
-  const ASSOCIATED_TOKEN_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
-  const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-  const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
-  
   const payerAddress = parseAddress(payerSigner.address);
   const associatedTokenAddress = parseAddress(associatedToken);
   const ownerAddress = parseAddress(owner);
@@ -281,6 +287,8 @@ export async function createAndSendTokenTransfer(
   console.log('[Token Transfer] Token program:', 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
   
   // Build transaction message following QuickNode guide pattern
+  // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
+  // where each builder function returns a progressively more specific type that TypeScript can't infer
   let transactionMessage: any = createTransactionMessage({ version: 0 });
   transactionMessage = setTransactionMessageFeePayerSigner(signer, transactionMessage);
   console.log('[Token Transfer] Fee payer set:', transactionMessage.feePayer?.address);
@@ -403,11 +411,15 @@ export async function createAndSendTokenTransfer(
   const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
   
   try {
+    // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
+    // The signed transaction has all required properties but TypeScript can't infer the exact type
     await sendAndConfirmTransaction(signedTransaction as any, { commitment: 'confirmed' });
     console.log('[Token Transfer] Transaction confirmed!');
     
     // Verify transaction actually succeeded on-chain
-    const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).send();
+    // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
+    // NOTE: Type assertion needed due to @solana/kit RPC type limitations
+    const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
     if (txResponse && txResponse.meta?.err) {
       console.error('[Token Transfer] Transaction confirmed but has error:', txResponse.meta.err);
       throw new Error(`Transaction failed: ${JSON.stringify(txResponse.meta.err)}`);
@@ -420,6 +432,7 @@ export async function createAndSendTokenTransfer(
       console.warn('[Token Transfer] ATA creation failed with "Provided owner is not allowed" - retrying without ATA creation (ATA may already exist)');
       
       // Retry transaction without ATA creation instruction
+      // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern
       let retryTransactionMessage: any = createTransactionMessage({ version: 0 });
       retryTransactionMessage = setTransactionMessageFeePayerSigner(signer, retryTransactionMessage);
       retryTransactionMessage = setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, retryTransactionMessage);
@@ -442,6 +455,7 @@ export async function createAndSendTokenTransfer(
       const retrySignature = getSignatureFromTransaction(retrySignedTransaction);
       
       try {
+        // NOTE: Type assertion necessary due to @solana/kit's transaction type system limitations
         await sendAndConfirmTransaction(retrySignedTransaction as any, { commitment: 'confirmed' });
         console.log('[Token Transfer] Retry transaction confirmed!');
         return retrySignature;
@@ -466,7 +480,9 @@ export async function createAndSendTokenTransfer(
     
     // Try to verify the transaction actually succeeded
     try {
-      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).send();
+      // Use latest transaction version (version 1) - @solana/kit creates versioned transactions
+      // NOTE: Type assertion needed due to @solana/kit RPC type limitations
+      const txResponse = await rpc.getTransaction(signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 1 } as any).send();
       if (txResponse && !txResponse.meta?.err) {
         console.log('[Token Transfer] Transaction verification: SUCCESS (transaction succeeded despite confirmation error)');
         return signature;

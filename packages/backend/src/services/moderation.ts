@@ -246,8 +246,15 @@ async function performAIModeration(
     jsonText = jsonMatch[0];
   }
 
-  // Parse JSON
-  const parsed = JSON.parse(jsonText);
+  // Parse JSON with error handling
+  let parsed: { score?: number; reasons?: string[] | null };
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (parseError) {
+    console.error('[performAIModeration] Failed to parse AI JSON response:', parseError);
+    console.error('[performAIModeration] JSON text attempted:', jsonText.substring(0, 500));
+    throw new Error(`Invalid JSON from AI moderation: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
+  }
   
   if (!parsed || typeof parsed.score !== 'number') {
     throw new Error('Invalid AI response format');
