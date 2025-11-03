@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-01 - License File Added
+
+#### Added
+- Added LICENSE file with GNU Affero General Public License Version 3 (AGPL-3.0)
+- Includes additional terms specifying that forks and derivatives must also be open sourced
+- Compliance with hackathon requirements for open source licensing
+
 ### 2025-11-01 (Later) - Payment Verification RPC Indexing Fixes
 
 #### Changed
