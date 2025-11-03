@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "threead": {
+      "name": "Three.ad MCP Server",
+      "description": "MCP server for posting, querying, and retrieving advertisements on Three.ad",
+      "url": "http://localhost:8787/mcp/",
+      "transport": "http",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}
+

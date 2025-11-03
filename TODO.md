@@ -28,12 +28,18 @@
 ## Media Upload
 
 ### R2 Image Upload
-**Status**: Not Implemented
+**Status**: Deferred Until After Hackathon
 
-**Issue**: Media upload to R2 is not yet implemented
+**Decision**: R2 image upload implementation is deferred until after the hackathon submission.
 
-**Notes**: 
-- Currently returns error if `media` is provided
-- Need to implement R2 upload before accepting media in ad creation
+**Current Behavior**: 
+- Currently returns error if `media` is provided in ad creation
+- Frontend will use `og:image` scraping from `link_url` as fallback for images
+- Images can be added post-hackathon when R2 upload is implemented
+
+**Post-Hackathon Implementation Plan**:
+- Add media support for ads
+- Create R2 upload service
+- Add media serving endpoint
 
 

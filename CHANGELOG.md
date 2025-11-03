@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-04 - Refactor MCP Server HTTP Handling and Add Cursor Configuration
+
+#### Changed
+- Refactored MCP server HTTP request handling to properly implement JSON-RPC 2.0 protocol manually
+- Extracted tool handlers into reusable `toolHandlers` Map for better code organization
+- Simplified tool registration code by removing verbose comments about type assertions
+- Improved error handling and validation for JSON-RPC requests (parse errors, invalid requests, method not found)
+- Added proper protocol method handlers: `initialize`, `tools/list`, and `tools/call`
+- Enhanced request validation with better error messages and status codes
+
+#### Added
+- `.cursor-mcp.json` configuration file for Cursor IDE MCP integration
+- `MCP_CURSOR_CONFIG.md` documentation with setup instructions for Cursor integration
+- Manual JSON-RPC protocol implementation for standalone Cloudflare Workers (without Agents platform)
+
+#### Notes
+- The MCP server now properly handles JSON-RPC 2.0 protocol over HTTP for standalone Workers
+- Tool handlers are stored separately for direct access during protocol handling
+- Configuration files enable easy MCP integration with Cursor IDE for development
+
 ### 2025-11-04 - Add getAvailableTags MCP Tool
 
 #### Added
