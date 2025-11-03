@@ -58,10 +58,11 @@ ${AVAILABLE_TAGS.map((tag, idx) => `${idx + 1}. ${tag}`).join('\n')}
 
 **Instructions:**
 1. Analyze the ad title, description, call-to-action, location, and interests
-2. Select 2-5 tags that best categorize this advertisement
-3. Choose tags that accurately represent what the ad is about
-4. Consider the primary purpose: is it selling a product? Offering a service? Looking for something? Advertising a job? Promoting an event?
-5. Be specific but not overly granular - use the most relevant tags from the list
+2. **MANDATORY**: Select EXACTLY 2-5 tags that best categorize this advertisement
+3. **MANDATORY**: Use ONLY the exact tag names from the available list - do not create variations or new tags
+4. Choose tags that accurately represent what the ad is about
+5. Consider the primary purpose: is it selling a product? Offering a service? Looking for something? Advertising a job? Promoting an event?
+6. Be specific but not overly granular - use the most relevant tags from the list
 
 **Tag Selection Guidelines:**
 - "job" - Job postings, hiring, employment opportunities
@@ -87,10 +88,26 @@ ${AVAILABLE_TAGS.map((tag, idx) => `${idx + 1}. ${tag}`).join('\n')}
 
 **Output Format (JSON only, no markdown):**
 {
-  "tags": [<string>, <string>, ...]
+  "tags": [<string>, <string>, ...]  // MUST be 2-5 tags from the available list above
 }
 
-Always respond with valid JSON only, no markdown formatting. The tags array should contain 2-5 tag strings from the available list.`;
+**CRITICAL OUTPUT REQUIREMENTS:**
+- The "tags" array MUST contain EXACTLY 2-5 tag strings
+- Each tag MUST be an exact match from the available tags list (case-sensitive)
+- Do NOT include any tags that are not in the available list
+- Do NOT use variations or plurals - use exact tag names as listed
+
+**EXAMPLE OUTPUT:**
+For a plumbing service ad:
+{"tags": ["services", "repair"]}
+
+For a vintage clothing sale:
+{"tags": ["product", "clothing"]}
+
+For a financial advisor:
+{"tags": ["finance", "services", "business"]}
+
+Always respond with valid JSON only, no markdown formatting. The tags array must contain 2-5 tag strings from the available list.`;
 
 export interface GenerateTagsResult {
   success: boolean;
@@ -195,6 +212,12 @@ export async function generateTags(
       .filter((tag: string) => AVAILABLE_TAGS.includes(tag as AvailableTag))
       .slice(0, 5); // Limit to 5 tags max
 
+    // Warn if AI generated invalid tags (helps identify prompt issues)
+    if (validTags.length < stringTags.length) {
+      const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as AvailableTag));
+      console.warn(`[generateTags] AI generated ${invalidTags.length} invalid tag(s): ${invalidTags.join(', ')}`);
+    }
+
     if (validTags.length === 0) {
       const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as AvailableTag));
       return {
@@ -203,6 +226,11 @@ export async function generateTags(
         error: 'No valid tags found',
         details: `Parsed ${parsed.tags.length} tags, but none matched the available tag list. Invalid tags: ${invalidTags.join(', ')}. Available tags: ${AVAILABLE_TAGS.slice(0, 10).join(', ')}...`,
       };
+    }
+    
+    // Warn if we have fewer than 2 tags (should be 2-5)
+    if (validTags.length < 2) {
+      console.warn(`[generateTags] Only ${validTags.length} valid tag(s) found, expected 2-5`);
     }
 
     // Success - return valid tags

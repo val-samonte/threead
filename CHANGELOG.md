@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-03 - Tag Generation Prompt Improvements
+
+#### Fixed
+- Fixed AI tag generation to consistently produce 2-5 tags instead of just 1 tag
+- Fixed syntax error in `COMBINED_SYSTEM_PROMPT` template literal (missing closing backtick)
+
+#### Changed
+- Enhanced AI prompts for tag generation with explicit requirements and examples:
+  - Added "CRITICAL" and "MANDATORY" markers emphasizing exact tag name usage
+  - Added explicit examples showing expected output format (plumbing service, vintage clothing, financial advisor)
+  - Made tag selection requirements more explicit (must use exact tag names from list, 2-5 tags required)
+  - Improved both combined AI analysis (`aiAnalysis.ts`) and standalone tag generation (`tags.ts`) prompts
+- Reduced debug logging verbosity:
+  - Removed verbose console.log statements for raw tags
+  - Kept essential console.warn statements for invalid tags and insufficient tag counts (helps identify prompt issues)
+  - Logging now focuses on actionable warnings rather than debug information
+
+#### Added
+- Warning logs when AI generates invalid tags (helps identify prompt issues in production)
+- Warning logs when fewer than 2 tags are generated (should be 2-5)
+
 ### 2025-11-03 - Test Fixes and AI Refusal Handling
 
 #### Fixed

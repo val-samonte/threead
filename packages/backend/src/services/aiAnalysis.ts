@@ -67,25 +67,46 @@ const COMBINED_SYSTEM_PROMPT = `You are an AI analysis system for advertisements
 
 **TAG SELECTION GUIDELINES:**
 
-**Available Tags:**
+**CRITICAL: You MUST ONLY use tags from the list below. Do NOT create new tags or use variations.**
+
+**Available Tags (SELECT ONLY FROM THIS LIST):**
 ${AVAILABLE_TAGS.map((tag, idx) => `${idx + 1}. ${tag}`).join('\n')}
 
 **Tag Selection Rules:**
-1. Select 2-5 tags that best categorize this advertisement
-2. "product" - Any physical item being sold (clothing, electronics, furniture, vehicles, etc.)
-3. "services" - Service offerings (plumbing, consulting, repair, cleaning, etc.) - NOT physical products
-4. "product" and "services" are mutually exclusive
-5. If selling a physical item, ALWAYS include "product" tag
-6. Consider primary purpose: selling product? Offering service? Job posting? Event? Looking for something?
+1. **MANDATORY**: Select EXACTLY 2-5 tags from the available list above
+2. **MANDATORY**: Use ONLY the exact tag names from the list - do not create variations or new tags
+3. "product" - Any physical item being sold (clothing, electronics, furniture, vehicles, collectibles, vintage items, etc.)
+4. "services" - Service offerings (plumbing, consulting, repair, cleaning, etc.) - NOT physical products
+5. "product" and "services" are mutually exclusive - choose one based on whether selling a physical item or offering a service
+6. If selling a physical item, ALWAYS include "product" tag
+7. If offering a service, ALWAYS include "services" tag
+8. Consider primary purpose: selling product? Offering service? Job posting? Event? Looking for something?
+9. You can combine tags (e.g., ["product", "clothing"] for clothing sales, or ["services", "repair"] for repair services)
 
 **OUTPUT FORMAT (JSON only, no markdown):**
 {
   "score": <number 0-10>,
   "reasons": [<string>, ...] or null,
-  "tags": [<string>, <string>, ...]
+  "tags": [<string>, <string>, ...]  // MUST be 2-5 tags from the available list above
 }
 
-Always respond with valid JSON only, no markdown formatting. The score must be between 0 and 10. The tags array should contain 2-5 tag strings from the available list.`;
+**CRITICAL OUTPUT REQUIREMENTS:**
+- The "tags" array MUST contain EXACTLY 2-5 tag strings
+- Each tag MUST be an exact match from the available tags list (case-sensitive)
+- Do NOT include any tags that are not in the available list
+- Do NOT use variations or plurals - use exact tag names as listed
+
+**EXAMPLE OUTPUT:**
+For a plumbing service ad:
+{"score": 10, "reasons": null, "tags": ["services", "repair"]}
+
+For a vintage clothing sale:
+{"score": 10, "reasons": null, "tags": ["product", "clothing"]}
+
+For a financial advisor:
+{"score": 10, "reasons": null, "tags": ["finance", "services", "business"]}
+
+Always respond with valid JSON only, no markdown formatting. The score must be between 0 and 10. The tags array must contain 2-5 tag strings from the available list.`;
 
 /**
  * Perform combined moderation and tag generation in a single AI call
@@ -210,6 +231,12 @@ export async function analyzeAdWithAI(
       .filter((tag: string) => AVAILABLE_TAGS.includes(tag as any))
       .slice(0, 5); // Limit to 5 tags max
 
+    // Warn if AI generated invalid tags (helps identify prompt issues)
+    if (validTags.length < stringTags.length) {
+      const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as any));
+      console.warn(`[analyzeAdWithAI] AI generated ${invalidTags.length} invalid tag(s): ${invalidTags.join(', ')}`);
+    }
+
     if (validTags.length === 0) {
       const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as any));
       return {
@@ -217,6 +244,11 @@ export async function analyzeAdWithAI(
         error: 'No valid tags found',
         details: `Parsed ${parsed.tags.length} tags, but none matched the available tag list. Invalid tags: ${invalidTags.join(', ')}. Available tags: ${AVAILABLE_TAGS.slice(0, 10).join(', ')}...`,
       };
+    }
+    
+    // Warn if we have fewer than 2 tags (should be 2-5)
+    if (validTags.length < 2) {
+      console.warn(`[analyzeAdWithAI] Only ${validTags.length} valid tag(s) found, expected 2-5`);
     }
 
     const score = Math.round(parsed.score);
