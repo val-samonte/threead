@@ -114,6 +114,7 @@ Call a specific tool.
 Create a new advertisement.
 
 **Arguments:**
+- `payment_tx` (required, string): Solana transaction signature containing x402 payment (USDC transfer to treasury). Must be valid base58 characters. The author (payer) will be extracted from this transaction.
 - `title` (required, string): Title of the advertisement (max 200 chars)
 - `description` (optional, string): Detailed description (max 2000 chars)
 - `call_to_action` (optional, string): Call to action text (max 100 chars)
@@ -142,7 +143,7 @@ Create a new advertisement.
 }
 ```
 
-**Note:** During development, payment verification is skipped. The `payment_tx` field will be set to a placeholder value (`dev-bypass-{uuid}`).
+**Note:** Payment verification is required. The `payment_tx` field must be a valid Solana transaction signature containing a USDC transfer to the treasury address. The author (payer) will be extracted from the payment transaction.
 
 ### `queryAds`
 
@@ -156,6 +157,7 @@ Search and query advertisements.
 - `min_age` (optional, number): Filter by minimum age target
 - `max_age` (optional, number): Filter by maximum age target
 - `interests` (optional, array of strings): Filter by interest tags
+- `tags` (optional, array of strings): Filter by AI-generated tags (e.g., ["product", "service", "job"])
 - `limit` (optional, number): Maximum number of results (default 50, max 100)
 - `offset` (optional, number): Offset for pagination (default 0)
 
@@ -176,7 +178,7 @@ Search and query advertisements.
 }
 ```
 
-**Note:** Semantic search via Vectorize is not yet implemented. Currently returns D1 database results only.
+**Note:** Semantic search via Vectorize is fully implemented. When a `query` parameter is provided, the tool performs semantic search using Cloudflare Vectorize with embeddings. When no query is provided, it falls back to D1 database keyword search.
 
 ### `getAdDetails`
 
@@ -251,6 +253,7 @@ curl -X POST http://localhost:8787/mcp/ \
     "params": {
       "name": "postAd",
       "arguments": {
+        "payment_tx": "YOUR_SOLANA_TRANSACTION_SIGNATURE_HERE",
         "title": "Coffee Shop Opening",
         "description": "New coffee shop opening in downtown Berkeley",
         "days": 30,
@@ -305,14 +308,16 @@ curl -X POST http://localhost:8787/mcp/ \
 
 ## Development Notes
 
-- **Payment Verification**: Currently disabled for development. Ads can be created without x402 payment verification.
-- **Vectorize Integration**: Semantic search is not yet implemented. The `queryAds` tool currently returns D1 database results only.
+- **Payment Verification**: ✅ Fully implemented. All ads require a valid x402 payment transaction signature (`payment_tx`). Payment verification includes transaction validation, amount checking, and payer extraction.
+- **Vectorize Integration**: ✅ Fully implemented. Semantic search uses Cloudflare Vectorize with `@cf/baai/bge-small-en-v1.5` embeddings (384 dimensions). Automatic indexing on ad creation.
+- **AI Moderation**: ✅ Fully implemented. Uses Cloudflare Workers AI (`@cf/meta/llama-3.2-3b-instruct`) for content moderation with scoring (0-10) and automatic shadow banning.
+- **AI Tagging**: ✅ Fully implemented. Automatic tag generation using Cloudflare Workers AI (30 predefined tags).
+- **Analytics**: ✅ Fully implemented. Impression and click tracking with server-side deduplication.
 - **Media Upload**: Not yet implemented. Media uploads will be added in a future update.
 
 ## Future Enhancements
 
-1. Vectorize integration for semantic search
-2. Cloudflare Workers AI for improved moderation
-3. R2 image upload support
-4. x402 payment verification integration
+1. R2 image upload support
+2. Cloudflare Agents x402 integration (using `withX402` from Cloudflare Agents platform)
+3. Frontend implementation
 

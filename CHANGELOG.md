@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-01 - Documentation Updates
+
+#### Changed
+- Updated `docs/MCP.md` to reflect current implementation status:
+  - Fixed outdated note about payment verification (now fully implemented and required)
+  - Fixed outdated note about Vectorize integration (now fully implemented)
+  - Added `payment_tx` to `postAd` arguments documentation
+  - Added `tags` parameter to `queryAds` arguments documentation
+  - Updated "Development Notes" section with current implementation status (✅ for completed features)
+  - Updated "Future Enhancements" to reflect actual remaining work
+  - Updated example usage to include `payment_tx` parameter
+- Updated `.cursorrules` to reflect current project status:
+  - Marked completed features (MCP, Vectorize, AI moderation, payment verification, tagging, analytics)
+  - Updated development priorities to show current focus (R2 upload, frontend)
+  - Removed outdated instructions about skipping payment verification
+  - Updated rules to state payment verification is now required
+
 ### 2025-11-01 - License File Added
 
 #### Added
