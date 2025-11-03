@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-03 - Remove Tag Filtering Restriction
+
+#### Changed
+- Removed tag filtering restriction - AI-generated tags no longer filtered to `AVAILABLE_TAGS` list
+- All AI-generated tags (up to 5) are now accepted, including tags not in the predefined list
+- Simplified tag processing logic in `tags.ts` and `aiAnalysis.ts` by removing validation filter
+- `AVAILABLE_TAGS` list still used as suggestions in AI prompts, but tags outside the list are accepted
+- Removed error case when no "valid" tags found (tags are now always accepted if AI generates them)
+
 ### 2025-11-03 - Tag Generation Prompt Improvements
 
 #### Fixed

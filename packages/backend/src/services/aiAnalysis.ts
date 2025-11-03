@@ -225,36 +225,19 @@ export async function analyzeAdWithAI(
       };
     }
 
-    // Validate tags are strings and filter to only include valid tags from our list
+    // Validate tags are strings and include all tags (no filtering)
     const stringTags = parsed.tags.filter((tag: unknown): tag is string => typeof tag === 'string');
-    const validTags = stringTags
-      .filter((tag: string) => AVAILABLE_TAGS.includes(tag as any))
-      .slice(0, 5); // Limit to 5 tags max
-
-    // Warn if AI generated invalid tags (helps identify prompt issues)
-    if (validTags.length < stringTags.length) {
-      const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as any));
-      console.warn(`[analyzeAdWithAI] AI generated ${invalidTags.length} invalid tag(s): ${invalidTags.join(', ')}`);
-    }
-
-    if (validTags.length === 0) {
-      const invalidTags = stringTags.filter((tag: string) => !AVAILABLE_TAGS.includes(tag as any));
-      return {
-        success: false,
-        error: 'No valid tags found',
-        details: `Parsed ${parsed.tags.length} tags, but none matched the available tag list. Invalid tags: ${invalidTags.join(', ')}. Available tags: ${AVAILABLE_TAGS.slice(0, 10).join(', ')}...`,
-      };
-    }
+    const allTags = stringTags.slice(0, 5); // Limit to 5 tags max
     
     // Warn if we have fewer than 2 tags (should be 2-5)
-    if (validTags.length < 2) {
-      console.warn(`[analyzeAdWithAI] Only ${validTags.length} valid tag(s) found, expected 2-5`);
+    if (allTags.length < 2) {
+      console.warn(`[analyzeAdWithAI] Only ${allTags.length} tag(s) found, expected 2-5`);
     }
 
     const score = Math.round(parsed.score);
     const visible = score >= 5;
 
-    // Success - return both moderation and tags
+    // Success - return both moderation and tags (including any that aren't in AVAILABLE_TAGS)
     return {
       success: true,
       moderation: {
@@ -262,7 +245,7 @@ export async function analyzeAdWithAI(
         visible,
         reasons: parsed.reasons && parsed.reasons.length > 0 ? parsed.reasons : undefined,
       },
-      tags: validTags,
+      tags: allTags,
     };
   } catch (error) {
     // Unexpected error during AI analysis
