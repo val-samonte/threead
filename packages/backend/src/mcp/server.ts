@@ -17,6 +17,7 @@ import type { Env } from '../types/env';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { queryAdsTool } from './tools/queryAds';
 import { getAdDetailsTool } from './tools/getAdDetails';
+import { getAvailableTagsTool } from './tools/getAvailableTags';
 import { createAdWithPayment } from '../services/createAdWithPayment';
 import type { CreateAdRequest, AdQueryParams } from '@threead/shared';
 import { z } from 'zod';
@@ -129,6 +130,27 @@ function getMCPServer(env: Env): McpServer {
       // VALIDATION IS PRESERVED: MCP SDK validates UUID format with zod before handler is called
       (async (args: any) => {
         const result = await getAdDetailsTool(args as { ad_id: string }, env);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      }) as any
+    );
+
+    // Register getAvailableTags tool
+    // This tool takes no parameters and returns the list of available tags
+    mcpServer.tool(
+      'getAvailableTags',
+      'Get the list of available tags that can be used for categorizing and filtering advertisements. These tags are automatically assigned to ads during creation via AI analysis, and can be used in queryAds to filter results.',
+      {} as any, // No parameters required
+      {},
+      // Callback signature: No args needed for this tool
+      (async () => {
+        const result = await getAvailableTagsTool();
         return {
           content: [
             {

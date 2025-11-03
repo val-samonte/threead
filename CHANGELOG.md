@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-04 - Add getAvailableTags MCP Tool
+
+#### Added
+- New MCP tool `getAvailableTags` that returns the list of available tags for categorizing and filtering advertisements
+- Tool helps agents understand what tags are available when creating or querying ads
+- Returns tags array, count, and description of tag usage
+- No parameters required - returns all available tags (30 predefined tags)
+- Documentation updated in `docs/MCP.md` with tool description and example usage
+
+### 2025-11-03 - Defer R2 Image Upload Until After Hackathon
+
+#### Changed
+- R2 image upload moved to post-hackathon priority
+- Frontend implementation is now the next priority for hackathon submission
+- Updated development priorities in `.cursorrules` to reflect R2 deferral
+- Updated `TODO.md` and `docs/MCP.md` to document R2 deferral decision
+
+#### Notes
+- Frontend will use `og:image` scraping from `link_url` as image fallback
+- R2 upload service and media serving endpoint will be implemented post-hackathon
+- Current behavior: ad creation returns error if `media` is provided (expected behavior)
+
 ### 2025-11-03 - Remove Tag Filtering Restriction
 
 #### Changed

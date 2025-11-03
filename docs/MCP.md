@@ -203,6 +203,60 @@ Get detailed information about a specific advertisement by ID.
 }
 ```
 
+### `getAvailableTags`
+
+Get the list of available tags that can be used for categorizing and filtering advertisements. These tags are automatically assigned to ads during creation via AI analysis, and can be used in `queryAds` to filter results.
+
+**Arguments:**
+- None (no parameters required)
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "6",
+  "result": {
+    "success": true,
+    "tags": [
+      "job",
+      "services",
+      "product",
+      "looking-for",
+      "event",
+      "housing",
+      "food",
+      "entertainment",
+      "education",
+      "healthcare",
+      "automotive",
+      "clothing",
+      "electronics",
+      "furniture",
+      "real-estate",
+      "transportation",
+      "business",
+      "community",
+      "sports",
+      "art",
+      "music",
+      "travel",
+      "beauty",
+      "fitness",
+      "technology",
+      "finance",
+      "legal",
+      "repair",
+      "cleaning",
+      "delivery"
+    ],
+    "count": 30,
+    "description": "Available tags for categorizing and filtering advertisements. These tags can be used in the queryAds tool to filter results, and are automatically assigned to ads during creation via AI analysis."
+  }
+}
+```
+
+**Note:** This tool helps agents understand what tags are available when creating or querying ads. Tags are used for categorization and filtering of advertisements.
+
 ## Error Handling
 
 The MCP server follows JSON-RPC 2.0 error codes:
@@ -306,6 +360,22 @@ curl -X POST http://localhost:8787/mcp/ \
   }'
 ```
 
+### Get Available Tags
+
+```bash
+curl -X POST http://localhost:8787/mcp/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "4",
+    "method": "tools/call",
+    "params": {
+      "name": "getAvailableTags",
+      "arguments": {}
+    }
+  }'
+```
+
 ## Development Notes
 
 - **Payment Verification**: ✅ Fully implemented. All ads require a valid x402 payment transaction signature (`payment_tx`). Payment verification includes transaction validation, amount checking, and payer extraction.
@@ -313,11 +383,11 @@ curl -X POST http://localhost:8787/mcp/ \
 - **AI Moderation**: ✅ Fully implemented. Uses Cloudflare Workers AI (`@cf/meta/llama-3.2-3b-instruct`) for content moderation with scoring (0-10) and automatic shadow banning.
 - **AI Tagging**: ✅ Fully implemented. Automatic tag generation using Cloudflare Workers AI (30 predefined tags).
 - **Analytics**: ✅ Fully implemented. Impression and click tracking with server-side deduplication.
-- **Media Upload**: Not yet implemented. Media uploads will be added in a future update.
+- **Media Upload**: Deferred until after hackathon. Media uploads will be added post-hackathon. Currently, ads can use `og:image` scraping from `link_url` via frontend.
 
 ## Future Enhancements
 
-1. R2 image upload support
+1. Frontend implementation (hackathon priority)
 2. Cloudflare Agents x402 integration (using `withX402` from Cloudflare Agents platform)
-3. Frontend implementation
+3. R2 image upload support (post-hackathon)
 
