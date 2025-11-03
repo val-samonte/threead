@@ -6,7 +6,7 @@
 
 import type { CreateAdRequest } from '@threead/shared';
 import type { Env } from '../types/env';
-import { parseAIJSONResponse } from '../utils/aiResponseParser';
+import { parseAIJSONResponse, extractResponseText } from '../utils/aiResponseParser';
 
 /**
  * Available tags that can be assigned to ads
@@ -156,6 +156,20 @@ export async function generateTags(
     const parseResult = parseAIJSONResponse<{ tags?: unknown[] }>(response);
 
     if (!parseResult.success || !parseResult.parsed) {
+      // Check if AI refused to process the content (common for illegal content)
+      const responseText = extractResponseText(response);
+      const lowerResponse = responseText.toLowerCase();
+      if (lowerResponse.includes('cannot') || lowerResponse.includes('refuse') || 
+          lowerResponse.includes('not provide') || lowerResponse.includes('not facilitate') ||
+          lowerResponse.includes('illegal') || lowerResponse.includes('promote')) {
+        // AI refused to process - return empty tags (illegal content shouldn't have tags)
+        console.warn('[generateTags] AI refused to process content, returning empty tags');
+        return {
+          success: true,
+          tags: [], // No tags for illegal content
+        };
+      }
+      
       return {
         success: false,
         tags: [],

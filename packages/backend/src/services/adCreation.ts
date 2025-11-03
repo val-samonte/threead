@@ -71,29 +71,63 @@ export async function createAdService(
       }
 
       // Generate tags with AI - MANDATORY: fail if tag generation fails
+      // Exception: For illegal content (score 0), empty tags are acceptable
       const tagResult = await generateTags(adRequest, env);
       
-      if (!tagResult.success || !tagResult.tags || tagResult.tags.length === 0) {
-        return {
-          success: false,
-          error: tagResult.error || 'Failed to generate tags. Tag generation is required for ad creation.',
-          details: tagResult.details,
-        };
+      if (!tagResult.success) {
+        // If moderation already scored as 0 (illegal), empty tags are acceptable
+        if (moderation.score === 0 && tagResult.tags && tagResult.tags.length === 0) {
+          tags = [];
+        } else {
+          return {
+            success: false,
+            error: tagResult.error || 'Failed to generate tags. Tag generation is required for ad creation.',
+            details: tagResult.details,
+          };
+        }
+      } else if (!tagResult.tags || tagResult.tags.length === 0) {
+        // If moderation already scored as 0 (illegal), empty tags are acceptable
+        if (moderation.score === 0) {
+          tags = [];
+        } else {
+          return {
+            success: false,
+            error: 'Failed to generate tags. Tag generation is required for ad creation.',
+            details: tagResult.details,
+          };
+        }
+      } else {
+        tags = tagResult.tags;
       }
-
-      tags = tagResult.tags;
     } else {
       // Combined analysis succeeded - use results
-      if (!aiResult.moderation || !aiResult.tags || aiResult.tags.length === 0) {
+      // For illegal content (score 0), tags may be empty - that's acceptable
+      if (!aiResult.moderation) {
         return {
           success: false,
           error: aiResult.error || 'Combined AI analysis returned incomplete results',
-          details: aiResult.details || 'Moderation or tags missing from AI response',
+          details: aiResult.details || 'Moderation missing from AI response',
         };
       }
 
       moderation = aiResult.moderation;
-      tags = aiResult.tags;
+      // Use empty tags array if tags is undefined (for illegal content with score 0)
+      // Illegal content (score 0) can have empty tags, but normal content must have tags
+      if (!aiResult.tags || aiResult.tags.length === 0) {
+        if (moderation.score === 0) {
+          // Illegal content - empty tags are acceptable
+          tags = [];
+        } else {
+          // Normal content must have tags
+          return {
+            success: false,
+            error: 'Combined AI analysis returned incomplete results',
+            details: 'Tags missing from AI response for non-illegal content',
+          };
+        }
+      } else {
+        tags = aiResult.tags;
+      }
     }
 
     // Create ad record

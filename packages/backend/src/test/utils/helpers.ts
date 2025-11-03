@@ -69,21 +69,39 @@ async function getTreasuryTokenAccount(): Promise<string> {
 /**
  * Helper to create an ad with real payment transaction
  * Uses shared payer keypair - automatically creates payment transaction
+ * @param adData - Ad data to send
+ * @param paymentTx - Optional payment transaction signature (if not provided, creates one)
+ * @param timeout - Optional timeout in milliseconds (default: 30000)
  */
 export async function createAdWithPayment(
   adData: Record<string, unknown>,
-  paymentTx?: string
+  paymentTx?: string,
+  timeout: number = 30000
 ): Promise<Response> {
   // If payment_tx is provided, use it (for tests that want to control the payment)
   if (paymentTx) {
-    return fetch(`${WORKER_URL}/api/ads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_tx: paymentTx,
-        ...adData,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(`${WORKER_URL}/api/ads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_tx: paymentTx,
+          ...adData,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeout}ms`);
+      }
+      throw error;
+    }
   }
 
   // Otherwise, create a real payment transaction
@@ -106,14 +124,28 @@ export async function createAdWithPayment(
   // Wait a moment for transaction to confirm
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  return fetch(`${WORKER_URL}/api/ads`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      payment_tx: realPaymentTx,
-      ...adData,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(`${WORKER_URL}/api/ads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payment_tx: realPaymentTx,
+        ...adData,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeout}ms`);
+    }
+    throw error;
+  }
 }
 
 export { WORKER_URL, getTreasuryTokenAccount };

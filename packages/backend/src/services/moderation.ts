@@ -212,7 +212,21 @@ async function performAIModeration(
 
   // Extract JSON from response
   const extractionResult = extractJSONFromResponse(responseText);
+
   if (!extractionResult.success || !extractionResult.jsonText) {
+    // Check if AI refused to process the content (common for illegal content)
+    const lowerResponse = responseText.toLowerCase();
+    if (lowerResponse.includes('cannot') || lowerResponse.includes('refuse') || 
+        lowerResponse.includes('not provide') || lowerResponse.includes('not facilitate') ||
+        lowerResponse.includes('illegal') || lowerResponse.includes('promote')) {
+      // AI refused to process - treat as illegal content (score 0)
+      console.warn('[performAIModeration] AI refused to process content, treating as illegal (score 0)');
+      return {
+        score: 0,
+        reasons: ['AI refused to process content - likely illegal or highly inappropriate'],
+      };
+    }
+    
     throw new Error(extractionResult.error || 'Failed to extract JSON from AI response');
   }
 

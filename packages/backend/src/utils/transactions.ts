@@ -326,8 +326,62 @@ export async function createAndSendTokenTransfer(
       throw new Error(`Transaction failed: ${JSON.stringify(txResponse.meta.err)}`);
     }
   } catch (error: any) {
+    // Check for common Solana errors and provide helpful messages
+    // Log the full error structure for debugging
+    const errorCode = error?.cause?.context?.__code || error?.context?.cause?.context?.__code || error?.code;
+    const errorMessage = error?.message || error?.cause?.message || 'Unknown error';
+    
+    // Log full error for debugging if it's not a known error code
+    if (!errorCode || (errorCode !== 4615026 && errorCode !== 4615025 && errorCode !== 4615050)) {
+      console.error('[Token Transfer] Error details:', {
+        errorCode,
+        errorMessage,
+        errorKeys: error ? Object.keys(error) : [],
+        errorCause: error?.cause ? Object.keys(error.cause) : [],
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
+      });
+    }
+    
+    // Error 4615026 = InsufficientFundsForFee (need SOL for transaction fees)
+    // Only trigger if we're CERTAIN this is the issue (check account balance first)
+    if (errorCode === 4615026) {
+      // Verify account actually has no SOL before throwing this error
+      // If account has SOL, this might be a different issue
+      try {
+        // Reuse the existing rpc instance created at the start of the function
+        const balanceResponse = await rpc.getBalance(parseAddress(payerAddress)).send();
+        const balance = balanceResponse.value; // Extract the Lamports value from the response
+        if (balance > 0n) {
+          // Account has SOL, so this error is misleading
+          console.warn(`[Token Transfer] Error 4615026 but account has ${balance} lamports SOL. Actual error: ${errorMessage}`);
+          throw new Error(
+            `Transaction failed with error code 4615026, but account has SOL balance.\n` +
+            `This might be a different issue. Original error: ${errorMessage}\n` +
+            `Account: ${payerAddress}, Balance: ${balance} lamports`
+          );
+        }
+      } catch {
+        // If balance check fails, proceed with original error message
+        console.warn('[Token Transfer] Could not verify balance, proceeding with original error');
+      }
+      
+      throw new Error(
+        `Insufficient SOL for transaction fees. Payer ${payerAddress} needs SOL to pay transaction fees.\n` +
+        `Fund the payer with: solana airdrop 1 ${payerAddress} (devnet)\n` +
+        `Original error: ${errorMessage}`
+      );
+    }
+    
+    // Error 4615025 = InsufficientFunds (need USDC for transfer)
+    if (errorCode === 4615025) {
+      throw new Error(
+        `Insufficient USDC balance. Payer ${payerAddress} needs USDC in their token account.\n` +
+        `Payer token account: ${payerTokenAccount}\n` +
+        `Original error: ${errorMessage}`
+      );
+    }
+    
     // Check if error is "Provided owner is not allowed" (4615050) - ATA might already exist
-    const errorCode = error?.cause?.context?.__code || error?.context?.cause?.context?.__code;
     if (errorCode === 4615050 && shouldCreateATA) {
       // Retry transaction without ATA creation instruction
       // NOTE: Type assertion is necessary due to @solana/kit's transaction message building pattern

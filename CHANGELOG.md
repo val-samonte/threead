@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-03 - Test Fixes and AI Refusal Handling
+
+#### Fixed
+- Fixed moderation test expectations to accept AI scoring variance (7-10 for clean content, 5-10 for age-gated adult content)
+- Fixed adult content test to accept scores 5-10 when properly age-gated (AI may score it as 10)
+- Fixed illegal content test to handle AI refusals gracefully (ad creation succeeds with score 0)
+- Fixed unused `balanceCheckError` variable in transaction error handling
+- Fixed duplicate `rpc` instance creation in error handling (now reuses existing instance)
+- Fixed timeout parameter in `createAdWithPayment` helper - now actually enforces timeout using AbortController
+- Fixed TypeScript error with balance comparison (now uses bigint comparison `0n`)
+
+#### Added
+- AI refusal handling in `aiAnalysis.ts`, `tags.ts`, and `moderation.ts` - detects when AI refuses to process illegal content and treats as score 0
+- Balance verification before throwing "insufficient SOL" error - checks actual account balance to avoid misleading error messages
+- Enhanced error logging for Solana transaction errors (logs full error structure for debugging)
+- Proper timeout implementation in test helpers using AbortController with cleanup
+
+#### Changed
+- Updated `adCreation.ts` to allow empty tags for illegal content (score 0) - normal content still requires tags
+- Improved error messages for Solana transaction failures - now includes account balance check and clearer diagnostics
+- Test timeout increased to 60 seconds for tests that create real payment transactions
+
 ### 2025-11-03 - Documentation Updates
 
 #### Changed

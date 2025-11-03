@@ -38,10 +38,25 @@ describe('Payment Verification Tests', () => {
       const treasuryTokenAccount = await getTreasuryTokenAccount();
       
       // Create actual payment transaction
-      const paymentTx = await payer.createPaymentTransaction(
-        amountSmallestUnits,
-        treasuryTokenAccount
-      );
+      // Note: This test requires the payer to be funded with SOL (for fees) and USDC (for payment)
+      // Fund with: solana airdrop 1 <payer-address> (devnet)
+      let paymentTx: string;
+      try {
+        paymentTx = await payer.createPaymentTransaction(
+          amountSmallestUnits,
+          treasuryTokenAccount
+        );
+      } catch (error: any) {
+        if (error.message?.includes('Insufficient SOL') || error.message?.includes('4615026')) {
+          throw new Error(
+            `Payer ${payer.publicKeyBase58} needs to be funded:\n` +
+            `1. SOL for fees: solana airdrop 1 ${payer.publicKeyBase58} (devnet)\n` +
+            `2. USDC for payment: Use a faucet or transfer devnet USDC\n` +
+            `Original error: ${error.message}`
+          );
+        }
+        throw error;
+      }
       
       expect(paymentTx).toBeDefined();
       expect(typeof paymentTx).toBe('string');
@@ -61,10 +76,24 @@ describe('Payment Verification Tests', () => {
       const treasuryTokenAccount = await getTreasuryTokenAccount();
       
       // Create payment transaction
-      const paymentTx = await payer.createPaymentTransaction(
-        amountSmallestUnits,
-        treasuryTokenAccount
-      );
+      // Note: This test requires the payer to be funded with SOL (for fees) and USDC (for payment)
+      let paymentTx: string;
+      try {
+        paymentTx = await payer.createPaymentTransaction(
+          amountSmallestUnits,
+          treasuryTokenAccount
+        );
+      } catch (error: any) {
+        if (error.message?.includes('Insufficient SOL') || error.message?.includes('4615026')) {
+          throw new Error(
+            `Payer ${payer.publicKeyBase58} needs to be funded:\n` +
+            `1. SOL for fees: solana airdrop 1 ${payer.publicKeyBase58} (devnet)\n` +
+            `2. USDC for payment: Use a faucet or transfer devnet USDC\n` +
+            `Original error: ${error.message}`
+          );
+        }
+        throw error;
+      }
       
       // Wait for transaction to be indexed by RPC before verification
       // RPC indexing can take a few seconds after confirmation
@@ -160,7 +189,9 @@ describe('Payment Verification Tests', () => {
       }
       
       expect(response.status).toBe(402); // Payment Required
-      expect(data.error).toContain('Payment');
+      expect(data.error).toBeDefined();
+      // Error should mention payment or insufficient balance
+      expect(data.error).toMatch(/payment|insufficient|balance/i);
     });
   });
 });

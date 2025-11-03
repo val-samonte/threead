@@ -8,7 +8,7 @@ import type { CreateAdRequest } from '@threead/shared';
 import type { Env } from '../types/env';
 import { AVAILABLE_TAGS } from './tags';
 import type { ModerationResult } from './moderation';
-import { parseAIJSONResponse } from '../utils/aiResponseParser';
+import { parseAIJSONResponse, extractResponseText } from '../utils/aiResponseParser';
 
 export interface CombinedAIResult {
   success: boolean;
@@ -158,6 +158,25 @@ export async function analyzeAdWithAI(
     }>(response);
 
     if (!parseResult.success || !parseResult.parsed) {
+      // Check if AI refused to process the content (common for illegal content)
+      const responseText = extractResponseText(response);
+      const lowerResponse = responseText.toLowerCase();
+      if (lowerResponse.includes('cannot') || lowerResponse.includes('refuse') || 
+          lowerResponse.includes('not provide') || lowerResponse.includes('not facilitate') ||
+          lowerResponse.includes('illegal') || lowerResponse.includes('promote')) {
+        // AI refused to process - treat as illegal content (score 0, no tags)
+        console.warn('[analyzeAdWithAI] AI refused to process content, treating as illegal (score 0)');
+        return {
+          success: true,
+          moderation: {
+            score: 0,
+            visible: false,
+            reasons: ['AI refused to process content - likely illegal or highly inappropriate'],
+          },
+          tags: [], // No tags for illegal content
+        };
+      }
+      
       return {
         success: false,
         error: parseResult.error || 'Failed to parse AI response',
