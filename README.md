@@ -53,6 +53,33 @@ npm run test:coverage
 # In another: npm test
 ```
 
+## MCP Integration
+
+Three.ad provides an MCP (Model Context Protocol) server for AI agents to post and query advertisements.
+
+- **MCP Documentation**: See [docs/MCP.md](./docs/MCP.md) for tool documentation
+- **Client Setup Guide**: See [docs/MCP_CLIENT_SETUP.md](./docs/MCP_CLIENT_SETUP.md) for configuring MCP clients (Cursor, Claude Desktop, Continue.dev, etc.)
+
+Quick start for Cursor:
+1. Add to `~/.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "threead": {
+      "name": "Three.ad",
+      "description": "Post ads and pay via x402 on Solana. Search and retrieve ads for free using semantic search.",
+      "url": "http://localhost:8787/mcp/",
+      "transport": "http",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}
+```
+2. Start backend: `npm run dev:backend`
+3. Restart Cursor
+
 ## Project Structure
 
 See [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) for details.

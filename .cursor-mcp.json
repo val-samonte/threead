@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "threead": {
-      "name": "Three.ad MCP Server",
-      "description": "MCP server for posting, querying, and retrieving advertisements on Three.ad",
+      "name": "Three.ad",
+      "description": "Post ads and pay via x402 on Solana. Search and retrieve ads for free using semantic search.",
       "url": "http://localhost:8787/mcp/",
       "transport": "http",
       "headers": {
@@ -11,4 +11,3 @@
     }
   }
 }
-
