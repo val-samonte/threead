@@ -16,6 +16,7 @@ export interface CreateAdResult {
   ad?: Ad;
   error?: string;
   details?: string;
+  duplicate?: boolean; // Flag for duplicate key error (unique constraint violation)
 }
 
 /**
@@ -164,9 +165,24 @@ export async function createAdService(
     try {
       await dbService.createAd(env.DB, ad);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // Check if this is a unique constraint violation (duplicate payment_tx)
+      const isDuplicate = errorMessage.includes('UNIQUE constraint') || 
+                          errorMessage.includes('duplicate') ||
+                          errorMessage.includes('UNIQUE constraint failed');
+      
+      if (isDuplicate) {
+        return {
+          success: false,
+          error: 'Payment already used',
+          details: 'This payment transaction has already been used to create an ad',
+          duplicate: true,
+        };
+      }
+      
       return {
         success: false,
-        error: `Failed to create ad: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `Failed to create ad: ${errorMessage}`,
       };
     }
 

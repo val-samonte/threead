@@ -22,6 +22,9 @@ export async function initializeDatabase(db: D1Database): Promise<void> {
   await db.exec('CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude)');
+  
+  // Create unique index on payment_tx for idempotency (prevents duplicate ad creation from same payment)
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_tx ON Ads(payment_tx)');
 
   // Create Impressions table
   await db.exec(

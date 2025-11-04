@@ -33,6 +33,10 @@ CREATE INDEX IF NOT EXISTS idx_interests ON Ads(interests);
 CREATE INDEX IF NOT EXISTS idx_tags ON Ads(tags);
 CREATE INDEX IF NOT EXISTS idx_geo ON Ads(latitude, longitude);
 
+-- Unique index on payment_tx for idempotency (prevents duplicate ad creation from same payment)
+-- This is a safety net for race conditions - should not trigger in normal flow
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_tx ON Ads(payment_tx);
+
 -- Impressions tracking table
 CREATE TABLE IF NOT EXISTS Impressions (
     impression_id TEXT PRIMARY KEY,      -- UUID v4 string

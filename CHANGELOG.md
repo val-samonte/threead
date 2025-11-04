@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2025-11-04 - Implement x402 Standard Payment Flow
+
+#### Added
+- x402 standard implementation following client-settled approach
+- `PaymentDetails` and `PaymentPayload` types in shared package
+- `generatePaymentDetails()` function to create 402 Payment Required responses
+- Idempotency service (`services/idempotency.ts`) with `checkTransactionAlreadyProcessed()` function
+- Unique index on `payment_tx` column in database schema for duplicate prevention
+- Support for `X-PAYMENT` header (new x402 flow) and `payment_tx` field (backward compatibility)
+- 402 Payment Required response when no payment provided in POST `/api/ads` requests
+- Two-level idempotency protection: application check + database constraint
+
+#### Changed
+- Refactored `createAdWithPayment()` flow to follow x402 pattern:
+  1. Extract payer from transaction signature
+  2. VERIFY transaction FIRST (before expensive operations - fail fast)
+  3. Check idempotency AFTER verification (before expensive ops)
+  4. Create ad (AI, DB, Vectorize) - only if verification and idempotency succeed
+- Payment verification now happens BEFORE ad creation (removed rollback logic)
+- `recipient` field in 402 response now returns wallet address (not ATA) per x402 standard
+- Updated error handling: 409 Conflict for duplicate payments, 402 for payment verification failures
+- Updated `createAdService()` to detect and handle unique constraint violations
+- Updated MCP tool description to clarify payment transaction must be settled on-chain first
+- Updated MCP documentation to explain x402 client-settled payment flow
+
+#### Removed
+- Balance checking (redundant - transaction already settled, verification is sufficient)
+- Rollback logic (not needed - verification happens before ad creation)
+- Unused `getPayerUSDCBalance` import from `createAdWithPayment.ts`
+- Unused `getAssociatedTokenAddress` import from `routes/ads.ts`
+
+#### Fixed
+- Payment details recipient now correctly returns wallet address instead of ATA (per x402 standard)
+- Client derives ATA when creating transaction, not server
+
+#### Notes
+- Follows x402 client-settled approach: client settles transaction first, server only verifies
+- No stale blockhash issues (transaction already settled)
+- No server-side settlement needed
+- Transaction verification is sufficient proof of payment (no balance check needed)
+- Idempotency prevents duplicate ad creation from same payment transaction
+- Unique constraint on `payment_tx` provides database-level safety net for race conditions
+
 ### 2025-11-04 - Refactor MCP Server HTTP Handling and Add Cursor Configuration
 
 #### Changed

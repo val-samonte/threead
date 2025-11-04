@@ -42,3 +42,28 @@ export function smallestUnitsToUSDC(units: number): number {
   return units / USDC_DECIMALS;
 }
 
+/**
+ * Payment details response for 402 Payment Required
+ * Follows x402 standard
+ */
+export interface PaymentDetails {
+  paymentRequired: boolean;
+  paymentDetails: {
+    amount: string; // USDC amount (e.g., "0.10")
+    currency: string; // "USDC"
+    recipient: string; // Recipient wallet address (not ATA) - client will derive ATA when creating transaction
+    mint: string; // USDC mint address
+    network: 'devnet' | 'mainnet-beta';
+    scheme: 'exact';
+    facilitatorUrl?: string; // Optional facilitator URL
+  };
+}
+
+/**
+ * Payment payload format (simplified)
+ * Contains transaction signature from client-settled transaction
+ */
+export interface PaymentPayload {
+  transactionSignature: string; // Solana transaction signature (base58)
+}
+

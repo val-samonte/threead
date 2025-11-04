@@ -66,7 +66,7 @@
   "paymentDetails": {
     "amount": "0.10",
     "currency": "USDC",
-    "recipient": "treasury-token-account-address",
+    "recipient": "treasury-wallet-address",
     "mint": "USDC_MINT_ADDRESS",
     "network": "devnet",
     "scheme": "exact",
@@ -74,6 +74,8 @@
   }
 }
 ```
+
+**Note:** The `recipient` field is the wallet address (not ATA). The client will derive the Associated Token Account (ATA) when creating the transaction, as per x402 standard.
 
 **Payment Payload Format (Simplified):**
 ```json
@@ -115,8 +117,7 @@ X-PAYMENT: 5VERv8NMvzbJMEKV8ghdqxEdNd5d3okZcs5c1a16S45z9W4WSKxE2TG8Zn2vZv2XZ26po
 4. Check for duplicate transaction (idempotency check - after verification)
    - Query database for existing ad with same payment_tx
    - If duplicate → Return error (payment already used - like a ticket)
-5. Check payer balance (early validation - redundant but useful for error messages)
-6. Create ad (AI, DB, Vectorize) - Can take time (5-30 seconds)
+5. Create ad (AI, DB, Vectorize) - Can take time (5-30 seconds)
    - AI moderation (expensive)
    - AI tagging (expensive)
    - DB insert with payment_tx (UNIQUE constraint prevents duplicates - safety net)
@@ -129,11 +130,11 @@ X-PAYMENT: 5VERv8NMvzbJMEKV8ghdqxEdNd5d3okZcs5c1a16S45z9W4WSKxE2TG8Zn2vZv2XZ26po
 - **VERIFY payment FIRST** (before expensive operations - fail fast)
 - Add idempotency check AFTER verification (check if payment_tx already exists)
   - If duplicate → Return error (payment already used - like a ticket)
-- Balance check AFTER verification (early validation)
 - Create ad AFTER verification and idempotency check succeeds
 - **UNIQUE constraint on payment_tx** (database-level safety net - should not happen normally)
 - No settlement needed (transaction already settled)
 - **No rollback needed** (verification happens before ad creation)
+- **No balance check needed** (transaction already settled - verification is sufficient)
 
 #### 2.2 Add Idempotency Protection
 
@@ -193,7 +194,7 @@ export interface PaymentDetails {
   paymentDetails: {
     amount: string; // USDC amount (e.g., "0.10")
     currency: string; // "USDC"
-    recipient: string; // Treasury token account address
+    recipient: string; // Recipient wallet address (not ATA) - client will derive ATA when creating transaction
     mint: string; // USDC mint address
     network: 'devnet' | 'mainnet-beta';
     scheme: 'exact';
@@ -310,8 +311,7 @@ const response = await fetch('/api/ads', {
      │    └─ Verification succeeds → Continue
      │ 9. Check idempotency (check if payment_tx already exists)
      │    ├─ Duplicate → Return error (payment already used)
-     │ 10. Check balance (early validation)
-     │ 11. Create ad (AI, DB, Vectorize) - Can take time
+     │ 10. Create ad (AI, DB, Vectorize) - Can take time
      │     - AI moderation (expensive)
      │     - AI tagging (expensive)
      │     - DB insert with payment_tx (UNIQUE constraint - safety net)
@@ -340,7 +340,6 @@ const response = await fetch('/api/ads', {
 
 **After Payment Verification (Before Expensive Operations):**
 - Transaction already processed (idempotency check) → `409 Conflict` or `400 Bad Request` (payment already used - like a ticket)
-- Insufficient balance → `402 Payment Required` (early validation)
 
 **During Ad Creation:**
 - AI processing fails → `500 Internal Server Error` (no cleanup needed)
@@ -471,7 +470,7 @@ describe('x402 Payment Flow', () => {
 - [ ] Update `createAdWithPayment()` flow
 - [ ] **Move payment verification FIRST (before any expensive operations)**
 - [ ] **Add idempotency check AFTER verification and BEFORE expensive operations**
-- [ ] Keep balance check AFTER verification (early validation)
+- [ ] Remove balance check (not needed - transaction already settled, verification is sufficient)
 - [ ] Remove rollback (not needed - verification happens first)
 - [ ] Add UNIQUE constraint on payment_tx column (safety net - should not happen normally)
 
@@ -546,28 +545,15 @@ if (existing) {
 }
 ```
 
-#### 10.3 Balance Check (Early Validation)
+#### 10.3 Balance Check Removed
 
-**Why Keep Balance Check:**
-- Better error messages (tell user before expensive operations)
-- Early rejection before AI processing
-- Helpful for debugging payment issues
-- Matches x402 template pattern (early validation)
+**Why Balance Check is NOT Needed:**
+- Transaction is already settled on-chain
+- If verification succeeds, payment already occurred
+- Balance check adds no value since we verify the transaction itself
+- Transaction verification is sufficient proof of payment
 
-**Note:** Balance check is technically redundant since transaction already succeeded, but provides better UX.
-
-**Implementation:**
-```typescript
-// Before creating ad (early validation)
-const payerBalance = await getPayerUSDCBalance(extractedPayer, env.USDC_MINT, env);
-if (payerBalance < expectedAmount.price) {
-  return {
-    success: false,
-    error: 'Insufficient USDC balance',
-    details: `Payer has ${(payerBalance / 1_000_000).toFixed(6)} USDC, but ${expectedAmount.priceUSDC} USDC is required`
-  };
-}
-```
+**Note:** Balance checking was removed because it's redundant - the transaction verification already confirms the payment happened successfully.
 
 ---
 
@@ -597,7 +583,7 @@ Content-Type: application/json
   "paymentDetails": {
     "amount": "0.10",
     "currency": "USDC",
-    "recipient": "treasury-token-account-address",
+    "recipient": "treasury-wallet-address",
     "mint": "USDC_MINT_ADDRESS",
     "network": "devnet",
     "scheme": "exact",
@@ -697,14 +683,6 @@ Content-Type: application/json
              │
              ├─ Duplicate found → Return error (payment already used)
              │                 - Prevent expensive AI/Vectorize calls
-             │
-             ▼
-┌─────────────────────────────────────────────────────────┐
-│ BALANCE_CHECK                                           │
-│ - Check payer balance (early validation)                │
-└────────────┬────────────────────────────────────────────┘
-             │
-             ├─ Insufficient balance → Return error (402)
              │
              ▼
 ┌─────────────────────────────────────────────────────────┐
@@ -844,7 +822,6 @@ try {
 - [ ] Add idempotency check (duplicate transaction prevention)
 - [ ] Add `checkTransactionAlreadyProcessed()` function
 - [ ] Update `createAdWithPayment()` flow
-- [ ] Keep balance check (early validation)
 - [ ] Keep verification (transaction already on-chain)
 - [ ] Update error handling for idempotency (409 Conflict)
 - [ ] Update rollback mechanism
@@ -878,14 +855,12 @@ try {
    - Payment details generation
    - Transaction signature verification
    - Idempotency checks
-   - Balance checking
    - Error handling
 
 2. **Integration Tests:**
    - Full x402 flow (402 → payment → verification → ad creation)
    - Idempotency (duplicate transaction handling)
-   - Verification failure → rollback
-   - Balance check → early rejection
+   - Verification failure → immediate error (no ad creation)
 
 3. **Manual Testing:**
    - Test with real Solana transactions
@@ -928,7 +903,7 @@ try {
 
 8. **No Rollback Needed** - Payment verification happens before ad creation. If verification fails, no ad is created (no cleanup needed).
 
-9. **Balance Check After Verification** - Technically redundant (transaction already succeeded), but useful for early validation and better error messages.
+9. **Balance Check Removed** - Balance checking is redundant since the transaction is already settled on-chain. Transaction verification is sufficient proof of payment.
 
 10. **Replay Protection** - Same as idempotency - unique constraint prevents replay attacks.
 

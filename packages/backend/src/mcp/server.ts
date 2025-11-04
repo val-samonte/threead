@@ -50,7 +50,7 @@ function getMCPServer(env: Env): McpServer {
     toolHandlers.set('postAd', postAdHandler);
     mcpServer.tool(
       'postAd',
-      'Post a new advertisement to Three.ad. Creates an ad that will be displayed to users matching the criteria. Requires payment_tx (x402 payment transaction signature) - the author will be extracted from the payment transaction.',
+      'Post a new advertisement to Three.ad. Creates an ad that will be displayed to users matching the criteria. Requires payment_tx (x402 payment transaction signature) - the payment transaction must be settled on-chain BEFORE calling this tool. The author (payer) will be extracted from the payment transaction.',
       {
         payment_tx: z.string()
           .min(1, 'Payment transaction signature (x402 payment) is required')
@@ -403,11 +403,13 @@ Post a new advertisement to Three.ad. This tool requires payment via x402 protoc
 - Additional days: 0.05 USDC per day
 - With image: +1 USDC (currently deferred, will be available post-hackathon)
 
-**Payment Process:**
+**Payment Process (x402 client-settled approach):**
 1. Create a Solana transaction that transfers USDC to the Three.ad treasury address
-2. Sign and send the transaction
-3. Use the transaction signature as the \`payment_tx\` parameter
-4. The system will verify the payment and extract the payer address
+2. Sign and **settle** the transaction (send to blockchain) - transaction must be confirmed on-chain
+3. Wait for transaction confirmation
+4. Use the confirmed transaction signature as the \`payment_tx\` parameter
+5. The system will verify the payment (already on-chain) and extract the payer address
+6. If the same payment transaction is used twice, the second call will return the existing ad (idempotency)
 
 **Example Usage:**
 \`\`\`json
